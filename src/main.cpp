@@ -8,7 +8,12 @@
 #pragma ide diagnostic ignored "openmp-use-default-none"
 
 int main(int argc, char *argv[]) {
-  if (std::string(argv[argc - 1]) != "debug") {
+  std::string logFlag = std::string(argv[argc - 1]);
+  if (logFlag == "debug") {
+    log_set_level(LOG_DEBUG);
+  } else if (logFlag == "info") {
+    log_set_level(LOG_INFO);
+  } else {
     log_set_quiet(true);
   }
   std::string arg_string;
@@ -65,7 +70,8 @@ int main(int argc, char *argv[]) {
   log_info(preprocessClock.Count("nodeIndex"));
 
   auto *edgesId = (EdgeT *) malloc(edgesNum * sizeof(EdgeT));
-  GetEdgesId(edgesId, nodeIndex, edgesSecond, nodesNum, preprocessClock);
+//  GetEdgesId(edgesId, nodeIndex, edgesSecond, nodesNum, preprocessClock);
+  GetEdgesId2(edgesId, nodeIndex, edgesSecond, nodesNum, edgesNum, preprocessClock);
   log_info(preprocessClock.Count("edgesId"));
 
   log_info(trussClock.Start());

@@ -21,6 +21,8 @@
 using NodeT = uint32_t;
 using EdgeT = uint32_t;
 
+const int CACHE_LINE_ENTRY = 16;
+
 inline std::string GetFileName(int argc, char **argv) {
   if (argc < 3) {
     fprintf(stderr, "usage: %s -f graph_name\n", argv[0]);
@@ -54,6 +56,184 @@ void GetEdgesId(EdgeT *edgesId,
       }
     }
   }
+}
+
+/*
+ * InclusivePrefixSumOMP: General Case Inclusive Prefix Sum
+ * histogram: is for cache-aware thread-local histogram purpose
+ * output: should be different from the variables captured in function object f
+ * size: is the original size for the flagged prefix sum
+ * f: requires it as the parameter, f(it) return the histogram value of that it
+ */
+template<typename H, typename T, typename F>
+void InclusivePrefixSumOMP(std::vector<H> &histogram, T *output, size_t size, F f) {
+  int omp_num_threads = omp_get_num_threads();
+
+#pragma omp single
+  {
+    histogram = std::vector<H>((omp_num_threads + 1) * CACHE_LINE_ENTRY, 0);
+  }
+  static thread_local int tid = omp_get_thread_num();
+  // 1st Pass: Histogram.
+  auto avg = size / omp_num_threads;
+  auto it_beg = avg * tid;
+  auto histogram_idx = (tid + 1) * CACHE_LINE_ENTRY;
+  histogram[histogram_idx] = 0;
+  auto it_end = tid == omp_num_threads - 1 ? size : avg * (tid + 1);
+  size_t prev = 0u;
+  for (auto it = it_beg; it < it_end; it++) {
+    auto value = f(it);
+    histogram[histogram_idx] += value;
+    prev += value;
+    output[it] = prev;
+  }
+#pragma omp barrier
+
+  // 2nd Pass: single-prefix-sum & Add previous sum.
+#pragma omp single
+  {
+    for (auto local_tid = 0; local_tid < omp_num_threads; local_tid++) {
+      auto local_histogram_idx = (local_tid + 1) * CACHE_LINE_ENTRY;
+      auto prev_histogram_idx = (local_tid) * CACHE_LINE_ENTRY;
+      histogram[local_histogram_idx] += histogram[prev_histogram_idx];
+    }
+  }
+  {
+    auto prev_sum = histogram[tid * CACHE_LINE_ENTRY];
+    for (auto it = it_beg; it < it_end; it++) {
+      output[it] += prev_sum;
+    }
+#pragma omp barrier
+  }
+}
+
+template<typename T>
+uint32_t BranchFreeBinarySearch(const T *a, const uint32_t offset_beg, const uint32_t offset_end, T x) {
+  int32_t n = offset_end - offset_beg;
+  using I = uint32_t;
+  const T *base = a + offset_beg;
+  while (n > 1) {
+    I half = n / 2;
+    __builtin_prefetch(base + half / 2, 0, 0);
+    __builtin_prefetch(base + half + half / 2, 0, 0);
+    base = (base[half] < x) ? base + half : base;
+    n -= half;
+  }
+  return (*base < x) + base - a;
+}
+
+// Assuming (offset_beg != offset_end)
+template<typename T>
+uint32_t GallopingSearch(const T *array, const uint32_t offset_beg, const uint32_t offset_end, T val) {
+  if (array[offset_end - 1] < val) {
+    return offset_end;
+  }
+  // galloping
+  if (array[offset_beg] >= val) {
+    return offset_beg;
+  }
+  if (array[offset_beg + 1] >= val) {
+    return offset_beg + 1;
+  }
+  if (array[offset_beg + 2] >= val) {
+    return offset_beg + 2;
+  }
+
+  auto jump_idx = 4u;
+  while (true) {
+    auto peek_idx = offset_beg + jump_idx;
+    if (peek_idx >= offset_end) {
+      return BranchFreeBinarySearch(array, (jump_idx >> 1u) + offset_beg + 1, offset_end, val);
+    }
+    if (array[peek_idx] < val) {
+      jump_idx <<= 1u;
+    } else {
+      return array[peek_idx] == val ? peek_idx :
+          BranchFreeBinarySearch(array, (jump_idx >> 1u) + offset_beg + 1, peek_idx + 1, val);
+    }
+  }
+}
+
+template<typename T>
+uint32_t LinearSearch(const T *array, const uint32_t offset_beg, const uint32_t offset_end, T val) {
+  // linear search fallback
+  for (auto offset = offset_beg; offset < offset_end; offset++) {
+    if (array[offset] >= val) {
+      return offset;
+    }
+  }
+  return offset_end;
+}
+
+inline NodeT FindSrc(const EdgeT *nodeIndex,
+                     NodeT nodesNum, NodeT u, const EdgeT edgeIdx) {
+  if (edgeIdx >= nodeIndex[u + 1]) {
+    // update last_u, preferring galloping instead of binary search because not large range here
+    u = GallopingSearch(nodeIndex, static_cast<uint32_t>(u) + 1, static_cast<uint32_t>(nodesNum + 1), edgeIdx);
+    // 1) first > , 2) has neighbor
+    if (nodeIndex[u] > edgeIdx) {
+      while (nodeIndex[u] - nodeIndex[u - 1] == 0) { u--; }
+      u--;
+    } else {
+      // g->num_edges[u] == i
+      while (nodeIndex[u + 1] - nodeIndex[u] == 0) {
+        u++;
+      }
+    }
+  }
+  return u;
+}
+
+void GetEdgesId2(EdgeT *edgesId,
+                 const EdgeT *nodeIndex,
+                 const NodeT *edgesSecond,
+                 NodeT nodesNum,
+                 EdgeT edgesNum,
+                 Clock &preprocessClock) {
+  auto *nodeIndexCopy = (EdgeT *) malloc((nodesNum + 1) * sizeof(EdgeT));
+  nodeIndexCopy[0] = 0;
+  //Edge upper_tri_start of each edge
+  auto *upper_tri_start = (EdgeT *) malloc(nodesNum * sizeof(EdgeT));
+
+  auto num_threads = omp_get_max_threads();
+  std::vector<uint32_t> histogram(CACHE_LINE_ENTRY * num_threads);
+
+#pragma omp parallel
+  {
+#pragma omp for
+    // Histogram (Count).
+    for (NodeT u = 0; u < nodesNum; u++) {
+      upper_tri_start[u] = (nodeIndex[u + 1] - nodeIndex[u] > 256)
+          ? GallopingSearch(edgesSecond, nodeIndex[u], nodeIndex[u + 1], u)
+          : LinearSearch(edgesSecond, nodeIndex[u], nodeIndex[u + 1], u);
+#ifdef SEQ_SCAN
+      num_edges_copy[u + 1] = nodeIndex[u + 1] - upper_tri_start[u];
+#endif
+    }
+
+    // Scan.
+    InclusivePrefixSumOMP(histogram, nodeIndexCopy + 1, nodesNum, [&](int u) {
+      return nodeIndex[u + 1] - upper_tri_start[u];
+    });
+
+    // Transform.
+    NodeT u = 0;
+#pragma omp for schedule(dynamic, 6000)
+    for (EdgeT j = 0u; j < edgesNum; j++) {
+      u = FindSrc(nodeIndex, nodesNum, u, j);
+      if (j < upper_tri_start[u]) {
+        auto v = edgesSecond[j];
+        auto offset = BranchFreeBinarySearch(edgesSecond, nodeIndex[v], nodeIndex[v + 1], u);
+        auto eid = nodeIndexCopy[v] + (offset - upper_tri_start[v]);
+        edgesId[j] = eid;
+      } else {
+        edgesId[j] = nodeIndexCopy[u] + (j - upper_tri_start[u]);
+      }
+    }
+
+  }
+  free(upper_tri_start);
+  free(nodeIndexCopy);
 }
 
 void GetEdgeSup(NodeT *edgesSup,
@@ -404,7 +584,7 @@ void KTruss(const EdgeT *nodeIndex,
           currTail = nextTail;
           nextTail = 0;
 
-          log_info("level: %d restEdges: %lu", level, todo);
+          log_debug("level: %d restEdges: %lu", level, todo);
         }
 
 #pragma omp barrier
@@ -457,7 +637,7 @@ void displayStats(const EdgeT *EdgeSupport, EdgeT halfEdgesNum) {
 
   for (int i = 0; i < maxSup + 1; i++) {
     if (sups[i] > 0) {
-      log_info("k: %d  edges: %lu", i + 2, sups[i]);
+      log_debug("k: %d  edges: %lu", i + 2, sups[i]);
     }
   }
 
