@@ -1,10 +1,11 @@
 CXX=g++
 CXXFLAGS=-O2 -std=c++11 -fopenmp -Iinclude
 
-all : truss
+all : kmax_truss
 
-truss : main.o log.o
-	$(CXX) $(CXXFLAGS) -o truss main.o log.o
+kmax_truss : main.o log.o
+	$(CXX) $(CXXFLAGS) -o kmax_truss main.o log.o
+	rm *.o
 
 main.o : src/main.cpp
 	$(CXX) $(CXXFLAGS) -c src/main.cpp -o main.o
@@ -14,5 +15,4 @@ log.o : src/log.cpp
 
 .PHONY : clean
 clean :
-	rm truss *.o
-
+	rm kmax_truss

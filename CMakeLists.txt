@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 2.8)
-project(k-max-truss)
+project(kmax-truss)
 
 set(CMAKE_CXX_STANDARD 11)
 
@@ -29,5 +29,4 @@ endif()
 
 include_directories(include)
 set(EXECUTABLE_OUTPUT_PATH ${CMAKE_CURRENT_SOURCE_DIR}/bin)
-add_definitions(-DTIME_RESULTS)
-add_executable(k_max_truess src/main.cpp src/log.cpp)
+add_executable(kmax_truss src/main.cpp src/log.cpp)
