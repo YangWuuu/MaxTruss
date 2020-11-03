@@ -3,34 +3,45 @@
 > [比赛网址](https://www.datafountain.cn/competitions/473/datasets)
 
 ## 代码编译说明
+
 在代码目录下运行`make`命令，当前目录得到`kmax_truss`可执行程序。
 
 ## 运行使用说明
+
 运行命令：
+
 ```shell script
 ./kmax_truss -f ***.tsv(图数据文件路径)
 ```
+
 标准输出为：
+
 ```text
 kmax = x, Edges in kmax-truss = y.
 ```
+
 其中x、y为整数，x代表kmax-truss值，y代表kmax-truss中的边数量。
 
 ## 基本算法介绍
+
 TODO
 
 ## 并行化设计思路和方法
+
 TODO
 
 ## 算法优化
+
 TODO
 
 ## 详细算法设计与实现
+
 TODO
 
 ## 实验结果与分析
 
 ### 图数据集
+
 > [下载地址](http://datafountain.int-yt.com/Files/BDCI2020/473HuaKeDaKtruss/ktruss-data.zip)
 
 | **数据集**               | **说明**                          | **kmax** | **Edges in kmax-truss** |
@@ -46,7 +57,9 @@ TODO
 ……[EOF]  
 
 ### 运行环境
+
 4核8线程 2.6GHz
+
 ```shell script
 # cat /proc/cpuinfo | grep name | cut -f2 -d: | uniq -c
       8  Intel(R) Xeon(R) Gold 6278C CPU @ 2.60GHz
@@ -59,6 +72,7 @@ cpu cores       : 4
 ```
 
 ### 实验结果
+
 | **数据集**            | **单线程(ms)** | **多线程(ms)** |
 |:---------------------:|:-----------:|:-----------:|
 | s18.e16.rmat.edgelist | 48073       | 6337        |
@@ -66,7 +80,6 @@ cpu cores       : 4
 | cit-Patents           | 17559       | 3362        |
 | soc-LiveJournal       | 134535      | 19733       |
 
-
-
 ## 程序代码模块说明
+
 TODO
