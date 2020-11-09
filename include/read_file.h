@@ -1,25 +1,26 @@
 #pragma once
 
-#include <cstdio>
-#include <cstdlib>
-#include <unistd.h>
-#include <sys/types.h>
+#include <fcntl.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
-#include <fcntl.h>
+#include <sys/types.h>
+#include <unistd.h>
+
 #include <algorithm>
+#include <cstdio>
+#include <cstdlib>
 #include <cstring>
 
-#include "log.h"
 #include "clock.h"
+#include "log.h"
+#include "util.h"
 
 class ReadFile {
  public:
-  ReadFile(const std::string &filePath, Clock &readFileClock) : filePath_(filePath), readFileClock_(readFileClock) {}
+  ReadFile(const std::string &filePath, Clock &readFileClock)
+      : filePath_(filePath), readFileClock_(readFileClock) {}
 
-  ~ReadFile() {
-    Release();
-  }
+  ~ReadFile() { Release(); }
 
   uint64_t ConstructEdges(uint64_t *&edges) {
     log_info(readFileClock_.Count("Start"));
@@ -27,15 +28,16 @@ class ReadFile {
     log_info(readFileClock_.Count("GetData"));
     uint64_t lineNum = GetLineNum();
     log_info(readFileClock_.Count("lineNum: %lu", lineNum));
-    edges = (uint64_t *) malloc((lineNum + 1) * sizeof(uint64_t));
+    edges = (uint64_t *)malloc((lineNum + 1) * sizeof(uint64_t));
     log_info(readFileClock_.Count("edges malloc"));
     uint64_t edgesNum = GetEdges(edges);
     log_info(readFileClock_.Count("edgesNum: %lu", edgesNum));
     bool isEdgesSorted = std::is_sorted(edges, edges + edgesNum);
-    log_info(readFileClock_.Count("isEdgesSorted: %s", isEdgesSorted ? "sorted" : "no sorted"));
+    log_info(readFileClock_.Count("isEdgesSorted: %s",
+                                  isEdgesSorted ? "sorted" : "no sorted"));
     if (!isEdgesSorted) {
       uint64_t newEdgesNum = edgesNum * 2;
-      auto newEdges = (uint64_t *) malloc(newEdgesNum * sizeof(uint64_t));
+      auto newEdges = (uint64_t *)malloc(newEdgesNum * sizeof(uint64_t));
       memcpy(newEdges, edges, edgesNum * sizeof(uint64_t));
       for (uint64_t i = 0; i < edgesNum; i++) {
         newEdges[edgesNum + i] = MAKEEDGE(SECOND(edges[i]), FIRST(edges[i]));
@@ -48,9 +50,11 @@ class ReadFile {
     }
     edgesNum = std::unique(edges, edges + edgesNum) - edges;
     log_info(readFileClock_.Count("unique edgesNum: %lu", edgesNum));
-    edgesNum = std::remove_if(edges, edges + edgesNum, [](const uint64_t &edge) {
-      return FIRST(edge) == SECOND(edge);
-    }) - edges;
+    edgesNum = std::remove_if(edges, edges + edgesNum,
+                              [](const uint64_t &edge) {
+                                return FIRST(edge) == SECOND(edge);
+                              }) -
+               edges;
     log_info(readFileClock_.Count("remove selfLoop edgesNum: %lu", edgesNum));
     return edgesNum;
   }
@@ -66,7 +70,7 @@ class ReadFile {
   }
 
   void GetData() {
-    struct stat statBuf{};
+    struct stat statBuf {};
     if ((fd_ = open(filePath_.c_str(), O_RDONLY)) < 0) {
       log_error("open file error");
       exit(-1);
@@ -76,7 +80,8 @@ class ReadFile {
       exit(-1);
     }
     len_ = statBuf.st_size;
-    if ((byte_ = (char *) mmap(nullptr, len_, PROT_READ, MAP_SHARED, fd_, 0)) == (void *) -1) {
+    if ((byte_ = (char *)mmap(nullptr, len_, PROT_READ, MAP_SHARED, fd_, 0)) ==
+        (void *)-1) {
       log_error("mmap file error");
       exit(-1);
     }
