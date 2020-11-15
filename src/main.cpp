@@ -1,6 +1,9 @@
+#include <omp.h>
+
 #include <string>
 
 #include "clock.h"
+#include "graph.h"
 #include "log.h"
 #include "read_file.h"
 #include "util.h"
@@ -16,6 +19,13 @@ int main(int argc, char *argv[]) {
   } else {
     log_set_quiet(true);
   }
+
+#ifdef SERIAL
+  log_info("serial run");
+#else
+  log_info("parallel run. thread num: %d", omp_get_max_threads());
+#endif
+
   std::string arg_string;
   for (int i = 0; i < argc; i++) {
     arg_string += std::string(argv[i]) + " ";
@@ -25,72 +35,16 @@ int main(int argc, char *argv[]) {
   std::string filePath = GetFileName(argc, argv);
 
   Clock allClock("All");
-  Clock readFileClock("ReadFile");
-  Clock preprocessClock("Preprocess");
-  Clock trussClock("Truss");
-
   log_info(allClock.Start());
 
-  log_info(readFileClock.Start());
   uint64_t *edges{nullptr};
-  ReadFile readFile(filePath, readFileClock);
-  EdgeT edgesNum = readFile.ConstructEdges(edges);
-  log_info(readFileClock.Count("End"));
+  ReadFile readFile(filePath);
+  uint64_t edgesNum = readFile.ConstructEdges(edges);
 
-  log_info(preprocessClock.Start());
-  auto *edgesFirst = (NodeT *)malloc(edgesNum * sizeof(NodeT));
-  auto *edgesSecond = (NodeT *)malloc(edgesNum * sizeof(NodeT));
-  for (EdgeT i = 0; i < edgesNum; i++) {
-    edgesFirst[i] = FIRST(edges[i]);
-    edgesSecond[i] = SECOND(edges[i]);
+  Graph graph(edges, edgesNum);
+  if (!graph.MaxKTruss(true)) {
+    graph.MaxKTruss(false);
   }
-  log_info(preprocessClock.Count("Unzip"));
-
-  NodeT nodesNum = edgesFirst[edgesNum - 1] + 1;
-  log_info(preprocessClock.Count("nodesNum: %llu", nodesNum));
-
-  EdgeT halfEdgesNum = edgesNum / 2;
-  auto *halfEdges = (uint64_t *)malloc(halfEdgesNum * sizeof(uint64_t));
-  std::copy_if(edges, edges + edgesNum, halfEdges,
-               [](const uint64_t &edge) { return FIRST(edge) < SECOND(edge); });
-  log_info(preprocessClock.Count("halfEdgesNum: %llu", halfEdgesNum));
-
-  auto *deg = (NodeT *)calloc(nodesNum, sizeof(NodeT));
-  log_info(preprocessClock.Count("deg calloc"));
-  for (EdgeT i = 0; i < edgesNum; i++) {
-    ++deg[edgesFirst[i]];
-  }
-  log_info(preprocessClock.Count("deg"));
-  auto *nodeIndex = (EdgeT *)calloc((nodesNum + 1), sizeof(EdgeT));
-  log_info(preprocessClock.Count("nodeIndex calloc"));
-  for (NodeT i = 0; i < nodesNum; i++) {
-    nodeIndex[i + 1] = nodeIndex[i] + deg[i];
-  }
-  log_info(preprocessClock.Count("nodeIndex"));
-
-  auto *edgesId = (EdgeT *)malloc(edgesNum * sizeof(EdgeT));
-  //  GetEdgesId(edgesId, nodeIndex, edgesSecond, nodesNum, preprocessClock);
-  GetEdgesId2(edgesId, nodeIndex, edgesSecond, nodesNum, edgesNum,
-              preprocessClock);
-  log_info(preprocessClock.Count("edgesId"));
-
-  log_info(trussClock.Start());
-
-  auto *edgesSup = (EdgeT *)calloc(halfEdgesNum, sizeof(EdgeT));
-  GetEdgeSup(edgesSup, nodeIndex, edgesSecond, edgesId, nodesNum);
-  log_info(trussClock.Count("GetEdgeSup"));
-
-  uint64_t count = 0;
-  for (uint64_t i = 0; i < halfEdgesNum; i++) {
-    count += edgesSup[i];
-  }
-  log_info(trussClock.Count("triangle count: %lu", count / 3));
-
-  KTruss(nodeIndex, edgesSecond, edgesSup, edgesId, halfEdgesNum, halfEdges);
-  log_info(trussClock.Count("KTruss"));
-
-  displayStats(edgesSup, halfEdgesNum);
-  log_info(trussClock.Count("displayStats"));
 
   log_info(allClock.Count("End"));
   return 0;

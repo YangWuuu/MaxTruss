@@ -29,4 +29,10 @@ endif()
 
 include_directories(include)
 set(EXECUTABLE_OUTPUT_PATH ${CMAKE_CURRENT_SOURCE_DIR}/bin)
-add_executable(kmax_truss src/main.cpp src/log.cpp)
+
+set(SRC_FILES src/main.cpp src/log.cpp src/read_file.cpp src/graph.cpp)
+
+add_executable(kmax_truss ${SRC_FILES})
+
+add_executable(kmax_truss_serial ${SRC_FILES})
+target_compile_definitions(kmax_truss_serial PRIVATE SERIAL=)
