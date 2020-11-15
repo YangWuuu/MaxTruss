@@ -112,59 +112,55 @@ void Unzip(const uint64_t *edges, EdgeT edgesNum, NodeT *&edgesFirst,
 ```
 
 ```c++
-void GetEdgeSup(const EdgeT *nodeIndex, const NodeT *edgesSecond,
-                const EdgeT *edgesId, NodeT nodesNum, NodeT *edgesSup) {
-  auto *startEdge = (EdgeT *)malloc(nodesNum * sizeof(EdgeT));
-  for (NodeT i = 0; i < nodesNum; i++) {
-    EdgeT j = nodeIndex[i];
-    EdgeT endIndex = nodeIndex[i + 1];
+void Graph::GetEdgesId() {
+  edgesId_ = (EdgeT *)malloc(edgesNum_ * sizeof(EdgeT));
 
-    while (j < endIndex) {
-      if (edgesSecond[j] > i) break;
-      j++;
-    }
-    startEdge[i] = j;
-  }
+  auto *nodeIndexCopy = (EdgeT *)malloc((nodesNum_ + 1) * sizeof(EdgeT));
+  nodeIndexCopy[0] = 0;
+  // Edge upper_tri_start of each edge
+  auto *upper_tri_start = (EdgeT *)malloc(nodesNum_ * sizeof(EdgeT));
+
+  auto num_threads = omp_get_max_threads();
+  std::vector<uint32_t> histogram(CACHE_LINE_ENTRY * num_threads);
+
 #pragma omp parallel
   {
-    auto *X = (EdgeT *)calloc(nodesNum, sizeof(EdgeT));
-#pragma omp for schedule(dynamic, 64)
-    for (NodeT u = 0; u < nodesNum; u++) {
-      for (EdgeT j = startEdge[u]; j < nodeIndex[u + 1]; j++) {
-        NodeT w = edgesSecond[j];
-        X[w] = j + 1;
-      }
+#pragma omp for
+    // Histogram (Count).
+    for (NodeT u = 0; u < nodesNum_; u++) {
+      upper_tri_start[u] =
+          (nodeIndex_[u + 1] - nodeIndex_[u] > 256)
+              ? GallopingSearch(edgesSecond_, nodeIndex_[u], nodeIndex_[u + 1],
+                                u)
+              : LinearSearch(edgesSecond_, nodeIndex_[u], nodeIndex_[u + 1], u);
+#ifdef SEQ_SCAN
+      num_edges_copy[u + 1] = nodeIndex[u + 1] - upper_tri_start[u];
+#endif
+    }
 
-      for (EdgeT j = nodeIndex[u]; j < startEdge[u]; j++) {
-        NodeT v = edgesSecond[j];
+    // Scan.
+    InclusivePrefixSumOMP(histogram, nodeIndexCopy + 1, nodesNum_, [&](int u) {
+      return nodeIndex_[u + 1] - upper_tri_start[u];
+    });
 
-        for (EdgeT k = nodeIndex[v + 1] - 1; k >= startEdge[v]; k--) {
-          NodeT w = edgesSecond[k];
-          // check if: w > u
-          if (w <= u) {
-            break;
-          }
-
-          if (X[w]) {  // This is a triangle
-            // edge id's are: <u,w> : g->eid[ X[w] -1]
-            //<u,w> : g->eid[ X[w] -1]
-            //<v,u> : g->eid[ j ]
-            //<v,w> : g->eid[ k ]
-            EdgeT e1 = edgesId[X[w] - 1], e2 = edgesId[j], e3 = edgesId[k];
-            __sync_fetch_and_add(&edgesSup[e1], 1);
-            __sync_fetch_and_add(&edgesSup[e2], 1);
-            __sync_fetch_and_add(&edgesSup[e3], 1);
-          }
-        }
-      }
-
-      for (EdgeT j = startEdge[u]; j < nodeIndex[u + 1]; j++) {
-        NodeT w = edgesSecond[j];
-        X[w] = 0;
+    // Transform.
+    NodeT u = 0;
+#pragma omp for schedule(dynamic, 6000)
+    for (EdgeT j = 0u; j < edgesNum_; j++) {
+      u = edgesFirst_[j];
+      if (j < upper_tri_start[u]) {
+        auto v = edgesSecond_[j];
+        auto offset = BranchFreeBinarySearch(edgesSecond_, nodeIndex_[v],
+                                             nodeIndex_[v + 1], u);
+        auto eid = nodeIndexCopy[v] + (offset - upper_tri_start[v]);
+        edgesId_[j] = eid;
+      } else {
+        edgesId_[j] = nodeIndexCopy[u] + (j - upper_tri_start[u]);
       }
     }
-#pragma omp barrier
   }
+  free(upper_tri_start);
+  free(nodeIndexCopy);
 }
 ```
 
