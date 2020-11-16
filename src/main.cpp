@@ -11,6 +11,7 @@
 #pragma ide diagnostic ignored "openmp-use-default-none"
 
 int main(int argc, char *argv[]) {
+  // 打印日志
   std::string logFlag = std::string(argv[argc - 1]);
   if (logFlag == "debug") {
     log_set_level(LOG_DEBUG);
@@ -37,10 +38,12 @@ int main(int argc, char *argv[]) {
   Clock allClock("All");
   log_info(allClock.Start());
 
+  // 文件读取
   uint64_t *edges{nullptr};
   ReadFile readFile(filePath);
   uint64_t edgesNum = readFile.ConstructEdges(edges);
 
+  // 求解max-k-truss
   Graph graph(edges, edgesNum);
   if (!graph.MaxKTruss(true)) {
     graph.MaxKTruss(false);

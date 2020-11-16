@@ -17,6 +17,10 @@
 using NodeT = uint32_t;
 using EdgeT = uint32_t;
 
+// Size of cache line
+const EdgeT BUFFER_SIZE_BYTES = 2048;
+const EdgeT BUFFER_SIZE = BUFFER_SIZE_BYTES / sizeof(NodeT);
+
 const uint64_t FILE_SPLIT_NUM = 8u;
 const uint64_t SEARCH_LINE_NUM = 1000u;
 const int CACHE_LINE_ENTRY = 16;

@@ -5,22 +5,28 @@
 
 #pragma ide diagnostic ignored "openmp-use-default-none"
 
+// 获取max-k-truss主流程
 bool Graph::MaxKTruss(bool remove) {
+  // 预处理
   Preprocess(remove);
 
+  // 三角形计数
   TriCount();
 
+  // 求解k-truss
   log_info(trussClock.Start());
   ::KTruss(nodeIndex_, edgesSecond_, edgesId_, halfEdges_, halfEdgesNum_,
            edgesSup_);
   log_info(trussClock.Count("KTruss"));
 
+  // 打印信息
   bool isValid = displayStats(edgesSup_, halfEdgesNum_, minK_);
   log_info(trussClock.Count("displayStats isValid: %d", isValid));
 
   return isValid;
 }
 
+// 图的预处理
 void Graph::Preprocess(bool remove) {
   log_info(preprocessClock.Start());
 
@@ -64,6 +70,7 @@ void Graph::Preprocess(bool remove) {
   log_info(preprocessClock.Count("GetEdgesId"));
 }
 
+// 图的裁剪
 void Graph::RemoveEdges() {
   // TODO parallel
   std::map<NodeT, NodeT> degNum;
@@ -100,10 +107,12 @@ void Graph::RemoveEdges() {
   log_info(preprocessClock.Count("edgesNum_: %u", edgesNum_));
 }
 
+// 三角形计数
 void Graph::TriCount() {
   log_info(triCountClock.Start());
   edgesSup_ = (EdgeT *)calloc(halfEdgesNum_, sizeof(EdgeT));
-  GetEdgeSup(nodeIndex_, edgesSecond_, edgesId_, nodesNum_, edgesSup_);
+  GetEdgeSup(halfEdges_, halfEdgesNum_, halfEdgesFirst_, halfEdgesSecond_,
+             halfDeg_, nodesNum_, halfNodeIndex_, edgesSup_);
   log_info(triCountClock.Count("Count"));
 
   // TODO can remove
@@ -114,6 +123,7 @@ void Graph::TriCount() {
   log_info(triCountClock.Count("triangle count: %lu", count / 3));
 }
 
+// 边编号
 void Graph::GetEdgesId() {
   edgesId_ = (EdgeT *)malloc(edgesNum_ * sizeof(EdgeT));
 
@@ -140,7 +150,6 @@ void Graph::GetEdgesId() {
 #else
   auto *nodeIndexCopy = (EdgeT *)malloc((nodesNum_ + 1) * sizeof(EdgeT));
   nodeIndexCopy[0] = 0;
-  // Edge upper_tri_start of each edge
   auto *upper_tri_start = (EdgeT *)malloc(nodesNum_ * sizeof(EdgeT));
 
   auto num_threads = omp_get_max_threads();
@@ -156,9 +165,6 @@ void Graph::GetEdgesId() {
               ? GallopingSearch(edgesSecond_, nodeIndex_[u], nodeIndex_[u + 1],
                                 u)
               : LinearSearch(edgesSecond_, nodeIndex_[u], nodeIndex_[u + 1], u);
-#ifdef SEQ_SCAN
-      num_edges_copy[u + 1] = nodeIndex[u + 1] - upper_tri_start[u];
-#endif
     }
 
     // Scan.
@@ -187,6 +193,7 @@ void Graph::GetEdgesId() {
 #endif
 }
 
+// 计算节点的度
 void CalDeg(const uint64_t *edges, EdgeT edgesNum, NodeT *deg) {
 #ifdef SERIAL
   for (EdgeT i = 0; i < edgesNum; i++) {
@@ -200,6 +207,7 @@ void CalDeg(const uint64_t *edges, EdgeT edgesNum, NodeT *deg) {
 #endif
 }
 
+// 边的解压缩
 void Unzip(const uint64_t *edges, EdgeT edgesNum, NodeT *&edgesFirst,
            NodeT *&edgesSecond) {
   edgesFirst = (NodeT *)malloc(edgesNum * sizeof(NodeT));
@@ -213,6 +221,7 @@ void Unzip(const uint64_t *edges, EdgeT edgesNum, NodeT *&edgesFirst,
   }
 }
 
+// 转换CSR格式
 void NodeIndex(const NodeT *deg, NodeT nodesNum, EdgeT *&nodeIndex) {
   nodeIndex = (EdgeT *)calloc((nodesNum + 1), sizeof(EdgeT));
   // TODO parallel
@@ -221,81 +230,58 @@ void NodeIndex(const NodeT *deg, NodeT nodesNum, EdgeT *&nodeIndex) {
   }
 }
 
-void GetEdgeSup(const EdgeT *nodeIndex, const NodeT *edgesSecond,
-                const EdgeT *edgesId, NodeT nodesNum, NodeT *edgesSup) {
-  auto *startEdge = (EdgeT *)malloc(nodesNum * sizeof(EdgeT));
-  for (NodeT i = 0; i < nodesNum; i++) {
-    EdgeT j = nodeIndex[i];
-    EdgeT endIndex = nodeIndex[i + 1];
+// 三角形计数获取支持边数量
+void GetEdgeSup(const uint64_t *halfEdges, EdgeT halfEdgesNum,
+                NodeT *&halfEdgesFirst, NodeT *&halfEdgesSecond,
+                NodeT *&halfDeg, NodeT nodesNum, EdgeT *&halfNodeIndex,
+                NodeT *edgesSup) {
+  ::Unzip(halfEdges, halfEdgesNum, halfEdgesFirst, halfEdgesSecond);
+  halfDeg = (NodeT *)calloc(nodesNum, sizeof(NodeT));
+  ::CalDeg(halfEdges, halfEdgesNum, halfDeg);
+  ::NodeIndex(halfDeg, nodesNum, halfNodeIndex);
 
-    while (j < endIndex) {
-      if (edgesSecond[j] > i) break;
-      j++;
-    }
-    startEdge[i] = j;
-  }
-#pragma omp parallel
-  {
-    auto *X = (EdgeT *)calloc(nodesNum, sizeof(EdgeT));
-#pragma omp for schedule(dynamic, 64)
-    for (NodeT u = 0; u < nodesNum; u++) {
-      for (EdgeT j = startEdge[u]; j < nodeIndex[u + 1]; j++) {
-        NodeT w = edgesSecond[j];
-        X[w] = j + 1;
-      }
-
-      for (EdgeT j = nodeIndex[u]; j < startEdge[u]; j++) {
-        NodeT v = edgesSecond[j];
-
-        for (EdgeT k = nodeIndex[v + 1] - 1; k >= startEdge[v]; k--) {
-          NodeT w = edgesSecond[k];
-          // check if: w > u
-          if (w <= u) {
-            break;
-          }
-
-          if (X[w]) {  // This is a triangle
-            // edge id's are: <u,w> : g->eid[ X[w] -1]
-            //<u,w> : g->eid[ X[w] -1]
-            //<v,u> : g->eid[ j ]
-            //<v,w> : g->eid[ k ]
-            EdgeT e1 = edgesId[X[w] - 1], e2 = edgesId[j], e3 = edgesId[k];
-            __sync_fetch_and_add(&edgesSup[e1], 1);
-            __sync_fetch_and_add(&edgesSup[e2], 1);
-            __sync_fetch_and_add(&edgesSup[e3], 1);
-          }
-        }
-      }
-
-      for (EdgeT j = startEdge[u]; j < nodeIndex[u + 1]; j++) {
-        NodeT w = edgesSecond[j];
-        X[w] = 0;
+#ifndef SERIAL
+#pragma omp parallel for schedule(dynamic, 1024)
+#endif
+  for (EdgeT i = 0; i < halfEdgesNum; i++) {
+    NodeT u = halfEdgesFirst[i];
+    NodeT v = halfEdgesSecond[i];
+    EdgeT uStart = halfNodeIndex[u];
+    EdgeT uEnd = halfNodeIndex[u + 1];
+    EdgeT vStart = halfNodeIndex[v];
+    EdgeT vEnd = halfNodeIndex[v + 1];
+    while (uStart < uEnd && vStart < vEnd) {
+      if (halfEdgesSecond[uStart] < halfEdgesSecond[vStart]) {
+        ++uStart;
+      } else if (halfEdgesSecond[uStart] > halfEdgesSecond[vStart]) {
+        ++vStart;
+      } else {
+        __sync_fetch_and_add(&edgesSup[i], 1);
+        __sync_fetch_and_add(&edgesSup[uStart], 1);
+        __sync_fetch_and_add(&edgesSup[vStart], 1);
+        ++uStart;
+        ++vStart;
       }
     }
-#pragma omp barrier
   }
 }
 
+// 并行扫描支持边是否与truss层次相同
 void Scan(EdgeT numEdges, const EdgeT *edgesSup, int level, EdgeT *curr,
           EdgeT &currTail, bool *inCurr) {
-  // Size of cache line
-  const EdgeT BUFFER_SIZE_BYTES = 2048;
-  const EdgeT BUFFER_SIZE = BUFFER_SIZE_BYTES / sizeof(NodeT);
-
   NodeT buff[BUFFER_SIZE];
   EdgeT index = 0;
 
-#pragma omp for schedule(static)
-  for (long i = 0; i < numEdges; i++) {
+#pragma omp for
+  for (EdgeT i = 0; i < numEdges; i++) {
     if (edgesSup[i] == level) {
       buff[index] = i;
       inCurr[i] = true;
       index++;
 
       if (index >= BUFFER_SIZE) {
-        long tempIdx = __sync_fetch_and_add(&currTail, BUFFER_SIZE);
-
-        for (long j = 0; j < BUFFER_SIZE; j++) {
+        EdgeT tempIdx = __sync_fetch_and_add(&currTail, BUFFER_SIZE);
+        for (EdgeT j = 0; j < BUFFER_SIZE; j++) {
           curr[tempIdx + j] = buff[j];
         }
         index = 0;
@@ -304,30 +290,48 @@ void Scan(EdgeT numEdges, const EdgeT *edgesSup, int level, EdgeT *curr,
   }
 
   if (index > 0) {
-    long tempIdx = __sync_fetch_and_add(&currTail, index);
-
+    EdgeT tempIdx = __sync_fetch_and_add(&currTail, index);
     for (EdgeT j = 0; j < index; j++) {
       curr[tempIdx + j] = buff[j];
     }
   }
-
 #pragma omp barrier
 }
 
+// 更新支持边的数值
+void UpdateSup(EdgeT e, EdgeT *edgesSup, int level, NodeT *buff, EdgeT &index,
+               EdgeT *next, bool *inNext, EdgeT &nextTail) {
+  int supE = __sync_fetch_and_sub(&edgesSup[e], 1);
+
+  if (supE == (level + 1)) {
+    buff[index] = e;
+    inNext[e] = true;
+    index++;
+  }
+
+  if (supE <= level) {
+    __sync_fetch_and_add(&edgesSup[e], 1);
+  }
+
+  if (index >= BUFFER_SIZE) {
+    EdgeT tempIdx = __sync_fetch_and_add(&nextTail, BUFFER_SIZE);
+    for (EdgeT bufIdx = 0; bufIdx < BUFFER_SIZE; bufIdx++)
+      next[tempIdx + bufIdx] = buff[bufIdx];
+    index = 0;
+  }
+}
+
+// 子任务循环迭代消减truss
 void SubLevel(const EdgeT *nodeIndex, const NodeT *edgesSecond,
               const EdgeT *curr, bool *inCurr, EdgeT currTail, EdgeT *edgesSup,
               int level, EdgeT *next, bool *inNext, EdgeT &nextTail,
               bool *processed, const EdgeT *edgesId,
               const uint64_t *halfEdges) {
-  // Size of cache line
-  const long BUFFER_SIZE_BYTES = 2048;
-  const long BUFFER_SIZE = BUFFER_SIZE_BYTES / sizeof(NodeT);
-
   NodeT buff[BUFFER_SIZE];
   EdgeT index = 0;
 
-#pragma omp for schedule(dynamic, 4)
-  for (long i = 0; i < currTail; i++) {
+#pragma omp for schedule(dynamic, 8)
+  for (EdgeT i = 0; i < currTail; i++) {
     // process edge <u,v>
     EdgeT e1 = curr[i];
     NodeT u = FIRST(halfEdges[e1]);
@@ -335,160 +339,31 @@ void SubLevel(const EdgeT *nodeIndex, const NodeT *edgesSecond,
 
     EdgeT uStart = nodeIndex[u], uEnd = nodeIndex[u + 1];
     EdgeT vStart = nodeIndex[v], vEnd = nodeIndex[v + 1];
-
-    unsigned int numElements = (uEnd - uStart) + (vEnd - vStart);
-    EdgeT j_index = uStart, k_index = vStart;
-
-    for (unsigned int innerIdx = 0; innerIdx < numElements; innerIdx++) {
-      if (j_index >= uEnd) {
-        break;
-      } else if (k_index >= vEnd) {
-        break;
-      } else if (edgesSecond[j_index] == edgesSecond[k_index]) {
-        EdgeT e2 = edgesId[k_index];  //<v,w>
-        EdgeT e3 = edgesId[j_index];  //<u,w>
-
-        // If e1, e2, e3 forms a triangle
-        if ((!processed[e2]) && (!processed[e3])) {
-          // Decrease support of both e2 and e3
-          if (edgesSup[e2] > level && edgesSup[e3] > level) {
-            // Process e2
-            int supE2 = __sync_fetch_and_sub(&edgesSup[e2], 1);
-            if (supE2 == (level + 1)) {
-              buff[index] = e2;
-              inNext[e2] = true;
-              index++;
-            }
-
-            if (supE2 <= level) {
-              __sync_fetch_and_add(&edgesSup[e2], 1);
-            }
-
-            if (index >= BUFFER_SIZE) {
-              long tempIdx = __sync_fetch_and_add(&nextTail, BUFFER_SIZE);
-
-              for (long bufIdx = 0; bufIdx < BUFFER_SIZE; bufIdx++)
-                next[tempIdx + bufIdx] = buff[bufIdx];
-              index = 0;
-            }
-
-            // Process e3
-            int supE3 = __sync_fetch_and_sub(&edgesSup[e3], 1);
-
-            if (supE3 == (level + 1)) {
-              buff[index] = e3;
-              inNext[e3] = true;
-              index++;
-            }
-
-            if (supE3 <= level) {
-              __sync_fetch_and_add(&edgesSup[e3], 1);
-            }
-
-            if (index >= BUFFER_SIZE) {
-              long tempIdx = __sync_fetch_and_add(&nextTail, BUFFER_SIZE);
-
-              for (long bufIdx = 0; bufIdx < BUFFER_SIZE; bufIdx++)
-                next[tempIdx + bufIdx] = buff[bufIdx];
-              index = 0;
-            }
-          } else if (edgesSup[e2] > level) {
-            // process e2 only if e1 < e3
-            if (e1 < e3 && inCurr[e3]) {
-              int supE2 = __sync_fetch_and_sub(&edgesSup[e2], 1);
-
-              if (supE2 == (level + 1)) {
-                buff[index] = e2;
-                inNext[e2] = true;
-                index++;
-              }
-
-              if (supE2 <= level) {
-                __sync_fetch_and_add(&edgesSup[e2], 1);
-              }
-
-              if (index >= BUFFER_SIZE) {
-                long tempIdx = __sync_fetch_and_add(&nextTail, BUFFER_SIZE);
-
-                for (long bufIdx = 0; bufIdx < BUFFER_SIZE; bufIdx++)
-                  next[tempIdx + bufIdx] = buff[bufIdx];
-                index = 0;
-              }
-            }
-            if (!inCurr[e3]) {  // if e3 is not in curr array then decrease
-              // support of e2
-              int supE2 = __sync_fetch_and_sub(&edgesSup[e2], 1);
-              if (supE2 == (level + 1)) {
-                buff[index] = e2;
-                inNext[e2] = true;
-                index++;
-              }
-
-              if (supE2 <= level) {
-                __sync_fetch_and_add(&edgesSup[e2], 1);
-              }
-
-              if (index >= BUFFER_SIZE) {
-                long tempIdx = __sync_fetch_and_add(&nextTail, BUFFER_SIZE);
-
-                for (long bufIdx = 0; bufIdx < BUFFER_SIZE; bufIdx++)
-                  next[tempIdx + bufIdx] = buff[bufIdx];
-                index = 0;
-              }
-            }
-          } else if (edgesSup[e3] > level) {
-            // process e3 only if e1 < e2
-            if (e1 < e2 && inCurr[e2]) {
-              int supE3 = __sync_fetch_and_sub(&edgesSup[e3], 1);
-
-              if (supE3 == (level + 1)) {
-                buff[index] = e3;
-                inNext[e3] = true;
-                index++;
-              }
-
-              if (supE3 <= level) {
-                __sync_fetch_and_add(&edgesSup[e3], 1);
-              }
-
-              if (index >= BUFFER_SIZE) {
-                long tempIdx = __sync_fetch_and_add(&nextTail, BUFFER_SIZE);
-
-                for (long bufIdx = 0; bufIdx < BUFFER_SIZE; bufIdx++)
-                  next[tempIdx + bufIdx] = buff[bufIdx];
-                index = 0;
-              }
-            }
-            if (!inCurr[e2]) {  // if e2 is not in curr array then decrease
-              // support of e3
-              int supE3 = __sync_fetch_and_sub(&edgesSup[e3], 1);
-
-              if (supE3 == (level + 1)) {
-                buff[index] = e3;
-                inNext[e3] = true;
-                index++;
-              }
-
-              if (supE3 <= level) {
-                __sync_fetch_and_add(&edgesSup[e3], 1);
-              }
-
-              if (index >= BUFFER_SIZE) {
-                long tempIdx = __sync_fetch_and_add(&nextTail, BUFFER_SIZE);
-
-                for (long bufIdx = 0; bufIdx < BUFFER_SIZE; bufIdx++)
-                  next[tempIdx + bufIdx] = buff[bufIdx];
-                index = 0;
-              }
-            }
+    while (uStart < uEnd && vStart < vEnd) {
+      if (edgesSecond[uStart] < edgesSecond[vStart]) {
+        ++uStart;
+      } else if (edgesSecond[uStart] > edgesSecond[vStart]) {
+        ++vStart;
+      } else {
+        EdgeT e2 = edgesId[uStart];
+        EdgeT e3 = edgesId[vStart];
+        ++uStart;
+        ++vStart;
+        if (processed[e2] || processed[e3]) {
+          continue;
+        }
+        if (edgesSup[e2] > level && edgesSup[e3] > level) {
+          UpdateSup(e2, edgesSup, level, buff, index, next, inNext, nextTail);
+          UpdateSup(e3, edgesSup, level, buff, index, next, inNext, nextTail);
+        } else if (edgesSup[e2] > level) {
+          if ((e1 < e3 && inCurr[e3]) || !inCurr[e3]) {
+            UpdateSup(e2, edgesSup, level, buff, index, next, inNext, nextTail);
+          }
+        } else if (edgesSup[e3] > level) {
+          if ((e1 < e2 && inCurr[e2]) || !inCurr[e2]) {
+            UpdateSup(e3, edgesSup, level, buff, index, next, inNext, nextTail);
           }
         }
-        j_index++;
-        k_index++;
-      } else if (edgesSecond[j_index] < edgesSecond[k_index]) {
-        j_index++;
-      } else if (edgesSecond[k_index] < edgesSecond[j_index]) {
-        k_index++;
       }
     }
   }
@@ -499,20 +374,17 @@ void SubLevel(const EdgeT *nodeIndex, const NodeT *edgesSecond,
       next[tempIdx + bufIdx] = buff[bufIdx];
     }
   }
-
 #pragma omp barrier
 
-#pragma omp for schedule(static)
-  for (long i = 0; i < currTail; i++) {
+#pragma omp for
+  for (EdgeT i = 0; i < currTail; i++) {
     EdgeT e = curr[i];
-
     processed[e] = true;
     inCurr[e] = false;
   }
-
-#pragma omp barrier
 }
 
+// 求解k-truss的主流程
 void KTruss(const EdgeT *nodeIndex, const NodeT *edgesSecond,
             const EdgeT *edgesId, const uint64_t *halfEdges, EdgeT halfEdgesNum,
             EdgeT *edgesSup) {
@@ -524,8 +396,10 @@ void KTruss(const EdgeT *nodeIndex, const NodeT *edgesSecond,
   auto *next = (EdgeT *)calloc(halfEdgesNum, sizeof(EdgeT));
   auto *inNext = (bool *)calloc(halfEdgesNum, sizeof(bool));
 
-  // parallel region
+
+#ifndef SERIAL
 #pragma omp parallel
+#endif
   {
     int tid = omp_get_thread_num();
 
@@ -551,23 +425,15 @@ void KTruss(const EdgeT *nodeIndex, const NodeT *edgesSecond,
 
           log_debug("level: %d restEdges: %lu", level, todo);
         }
-
 #pragma omp barrier
       }
-
       level = level + 1;
 #pragma omp barrier
     }
-  }  // End of parallel region
-
-  // Free memory
-  free(next);
-  free(inNext);
-  free(curr);
-  free(inCurr);
-  free(processed);
+  }
 }
 
+// 获取各层次truss的边的数量
 bool displayStats(const EdgeT *EdgeSupport, EdgeT halfEdgesNum, NodeT minK) {
   NodeT minSup = std::numeric_limits<NodeT>::max();
   NodeT maxSup = 0;
@@ -576,7 +442,6 @@ bool displayStats(const EdgeT *EdgeSupport, EdgeT halfEdgesNum, NodeT minK) {
     if (minSup > EdgeSupport[i]) {
       minSup = EdgeSupport[i];
     }
-
     if (maxSup < EdgeSupport[i]) {
       maxSup = EdgeSupport[i];
     }
@@ -584,22 +449,19 @@ bool displayStats(const EdgeT *EdgeSupport, EdgeT halfEdgesNum, NodeT minK) {
 
   EdgeT numEdgesWithMinSup = 0;
   EdgeT numEdgesWithMaxSup = 0;
-
-  for (long i = 0; i < halfEdgesNum; i++) {
+  for (EdgeT i = 0; i < halfEdgesNum; i++) {
     if (EdgeSupport[i] == minSup) {
       numEdgesWithMinSup++;
     }
-
     if (EdgeSupport[i] == maxSup) {
       numEdgesWithMaxSup++;
     }
   }
 
   std::vector<uint64_t> sups(maxSup + 1);
-  for (long i = 0; i < halfEdgesNum; i++) {
+  for (EdgeT i = 0; i < halfEdgesNum; i++) {
     sups[EdgeSupport[i]]++;
   }
-
   for (int i = 0; i < maxSup + 1; i++) {
     if (sups[i] > 0) {
       log_debug("k: %d  edges: %lu", i + 2, sups[i]);
