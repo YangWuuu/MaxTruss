@@ -5,10 +5,65 @@
 
 #pragma ide diagnostic ignored "openmp-use-default-none"
 
+NodeT Graph::GetMaxK() {
+  log_info(preprocessClock.Start());
+  rawDeg_ = (NodeT *)calloc(rawNodesNum_, sizeof(NodeT));
+  ::CalDeg(rawEdges_, rawEdgesNum_, rawDeg_);
+  log_info(preprocessClock.Count("rawDeg_"));
+
+//  auto *degNum = (EdgeT *)calloc(rawNodesNum_, sizeof(EdgeT));
+//  //here sync fetch add is slow
+//  //#ifndef SERIAL
+//  //#pragma omp parallel for
+//  //#endif
+//  for (int i = 0; i < rawNodesNum_; i++) {
+//    //    __sync_fetch_and_add(&degNum[rawDeg_[i]], 1);
+//    degNum[rawDeg_[i]]++;
+//  }
+//  log_info(preprocessClock.Count("degNum"));
+//
+//  NodeT maxK = 0;
+//  NodeT reverseCount = 0;
+//  for (auto m = rawNodesNum_ - 1; m != 0; m--) {
+//    NodeT proposedKMax = m + 1;
+//    reverseCount += degNum[m];
+//    if (reverseCount >= proposedKMax) {
+//      maxK = proposedKMax;
+//      break;
+//    }
+//  }
+
+  // TODO parallel
+  std::map<NodeT, NodeT> degNum;
+  for (int i = 0; i < rawNodesNum_; i++) {
+    if (degNum.count(rawDeg_[i]) == 0) {
+      degNum[rawDeg_[i]] = 0;
+    }
+    degNum[rawDeg_[i]]++;
+  }
+  log_info(preprocessClock.Count("degNum"));
+
+  NodeT maxK = 0;
+  NodeT reverseCount = 0;
+  for (auto m = degNum.rbegin(); m != degNum.rend(); m++) {
+    NodeT proposedKMax = m->first + 1;
+    reverseCount += m->second;
+    if (reverseCount >= proposedKMax) {
+      maxK = proposedKMax;
+      break;
+    }
+  }
+
+  log_info(preprocessClock.Count("maxK: %u", maxK));
+  return maxK;
+}
+
 // 获取max-k-truss主流程
-bool Graph::MaxKTruss(bool remove) {
+bool Graph::MaxKTruss(NodeT startK) {
+  startK_ = startK;
+
   // 预处理
-  Preprocess(remove);
+  Preprocess();
 
   // 三角形计数
   TriCount();
@@ -20,24 +75,18 @@ bool Graph::MaxKTruss(bool remove) {
   log_info(trussClock.Count("KTruss"));
 
   // 打印信息
-  bool isValid = displayStats(edgesSup_, halfEdgesNum_, minK_);
+  bool isValid = displayStats(edgesSup_, halfEdgesNum_, startK_);
   log_info(trussClock.Count("displayStats isValid: %d", isValid));
 
   return isValid;
 }
 
 // 图的预处理
-void Graph::Preprocess(bool remove) {
+void Graph::Preprocess() {
   log_info(preprocessClock.Start());
+  log_info(preprocessClock.Count("startK_: %u", startK_));
 
-  if (!repeat_) {
-    rawDeg_ = (NodeT *)calloc(rawNodesNum_, sizeof(NodeT));
-    ::CalDeg(rawEdges_, rawEdgesNum_, rawDeg_);
-    log_info(preprocessClock.Count("cal deg"));
-    repeat_ = true;
-  }
-
-  if (remove) {
+  if (startK_ > 10u) {
     RemoveEdges();
     nodesNum_ = FIRST(edges_[edgesNum_ - 1]) + 1;
     log_info(preprocessClock.Count("nodesNum_: %u", nodesNum_));
@@ -45,7 +94,7 @@ void Graph::Preprocess(bool remove) {
     ::CalDeg(edges_, edgesNum_, deg_);
     log_info(preprocessClock.Count("cal deg"));
   } else {
-    minK_ = 0;
+    startK_ = 0;
     edges_ = rawEdges_;
     edgesNum_ = rawEdgesNum_;
     nodesNum_ = rawNodesNum_;
@@ -72,35 +121,13 @@ void Graph::Preprocess(bool remove) {
 
 // 图的裁剪
 void Graph::RemoveEdges() {
+    edges_ = (uint64_t *)malloc(rawEdgesNum_ * sizeof(uint64_t));
   // TODO parallel
-  std::map<NodeT, NodeT> degNum;
-  for (int i = 0; i < rawNodesNum_; i++) {
-    if (degNum.count(rawDeg_[i]) == 0) {
-      degNum[rawDeg_[i]] = 0;
-    }
-    degNum[rawDeg_[i]]++;
-  }
-  log_info(preprocessClock.Count("degNum"));
-
-  NodeT maxK = 0;
-  NodeT reverseCount = 0;
-  for (auto m = degNum.rbegin(); m != degNum.rend(); m++) {
-    NodeT proposedKMax = m->first + 1;
-    reverseCount += m->second;
-    if (reverseCount >= proposedKMax) {
-      maxK = proposedKMax;
-      break;
-    }
-  }
-  minK_ = maxK / SHRINK_SIZE;
-  log_info(preprocessClock.Count("minK: %u maxK: %u", minK_, maxK));
-
-  edges_ = (uint64_t *)malloc(rawEdgesNum_ * sizeof(uint64_t));
-  // TODO parallel
+  // TODO 这里可以做的更彻底一点
   edgesNum_ = std::copy_if(rawEdges_, rawEdges_ + rawEdgesNum_, edges_,
                            [&](const uint64_t edge) {
-                             return rawDeg_[FIRST(edge)] > minK_ &&
-                                    rawDeg_[SECOND(edge)] > minK_;
+                             return rawDeg_[FIRST(edge)] > startK_ &&
+                                    rawDeg_[SECOND(edge)] > startK_;
                            }) -
               edges_;
 
@@ -395,7 +422,6 @@ void KTruss(const EdgeT *nodeIndex, const NodeT *edgesSecond,
   auto *inCurr = (bool *)calloc(halfEdgesNum, sizeof(bool));
   auto *next = (EdgeT *)calloc(halfEdgesNum, sizeof(EdgeT));
   auto *inNext = (bool *)calloc(halfEdgesNum, sizeof(bool));
-
 
 #ifndef SERIAL
 #pragma omp parallel

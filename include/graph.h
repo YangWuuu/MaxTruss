@@ -17,12 +17,14 @@ class Graph {
 
   ~Graph() {}
 
+  NodeT GetMaxK();
+
   // 获取max-k-truss
-  bool MaxKTruss(bool remove = false);
+  bool MaxKTruss(NodeT startK);
 
  private:
   // 图的预处理
-  void Preprocess(bool remove);
+  void Preprocess();
   // 图的裁剪
   void RemoveEdges();
   // 边编号
@@ -35,8 +37,7 @@ class Graph {
   Clock triCountClock;
   Clock trussClock;
 
-  bool repeat_{false};
-  NodeT minK_{2};
+  NodeT startK_{0};
 
   // 原始图信息
   uint64_t *rawEdges_;

@@ -45,8 +45,27 @@ int main(int argc, char *argv[]) {
 
   // 求解max-k-truss
   Graph graph(edges, edgesNum);
-  if (!graph.MaxKTruss(true)) {
-    graph.MaxKTruss(false);
+  // TODO Graph中内存需要统一全局分配
+  NodeT maxK = graph.GetMaxK();
+
+  double shrinkSize = 7;
+  if (argc >= 4) {
+    std::string shrinkStr = argv[3];
+    if (shrinkStr != "debug" && shrinkStr != "info") {
+      shrinkSize = std::stod(argv[3]);
+    }
+  }
+  if (shrinkSize <= 1.4 || shrinkSize > 100) {
+    shrinkSize = 1.5;
+  }
+  log_info("shrinkSize: %.3f", shrinkSize);
+
+  while (true) {
+    maxK /= shrinkSize;
+    // TODO 每轮得到的 kmax 可以作为下一轮的依据
+    if (graph.MaxKTruss(maxK)) {
+      break;
+    }
   }
 
   log_info(allClock.Count("End"));

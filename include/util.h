@@ -24,7 +24,6 @@ const EdgeT BUFFER_SIZE = BUFFER_SIZE_BYTES / sizeof(NodeT);
 const uint64_t FILE_SPLIT_NUM = 8u;
 const uint64_t SEARCH_LINE_NUM = 1000u;
 const int CACHE_LINE_ENTRY = 16;
-const uint32_t SHRINK_SIZE = 7u;
 
 inline std::string GetFileName(int argc, char **argv) {
   if (argc < 3) {
