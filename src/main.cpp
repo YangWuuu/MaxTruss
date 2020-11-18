@@ -48,7 +48,7 @@ int main(int argc, char *argv[]) {
   // TODO Graph中内存需要统一全局分配
   NodeT maxK = graph.GetMaxK();
 
-  double shrinkSize = 7;
+  double shrinkSize = 5;
   if (argc >= 4) {
     std::string shrinkStr = argv[3];
     if (shrinkStr != "debug" && shrinkStr != "info") {
@@ -59,14 +59,31 @@ int main(int argc, char *argv[]) {
     shrinkSize = 1.5;
   }
   log_info("shrinkSize: %.3f", shrinkSize);
+  NodeT startK = maxK / shrinkSize;
 
   while (true) {
-    maxK /= shrinkSize;
-    // TODO 每轮得到的 kmax 可以作为下一轮的依据
-    if (graph.MaxKTruss(maxK)) {
+    NodeT possibleKMax1 = graph.MaxKTruss(startK);
+    log_info("startK: %u possibleKMax1: %u", startK, possibleKMax1);
+    if (possibleKMax1 >= startK) {
+      break;
+    }
+
+    startK = possibleKMax1;
+    NodeT possibleKMax2 = graph.MaxKTruss(startK);
+    log_info("maxK: %u possibleKMax2: %u", startK, possibleKMax2);
+    if (possibleKMax2 >= startK) {
+      break;
+    }
+
+    // can not go here
+    startK = 0;
+    NodeT possibleKMax3 = graph.MaxKTruss(startK);
+    log_info("maxK: %u possibleKMax3: %u", startK, possibleKMax3);
+    if (possibleKMax3 >= startK) {
       break;
     }
   }
+
 
   log_info(allClock.Count("End"));
   return 0;

@@ -20,7 +20,7 @@ class Graph {
   NodeT GetMaxK();
 
   // 获取max-k-truss
-  bool MaxKTruss(NodeT startK);
+  NodeT MaxKTruss(NodeT startK);
 
  private:
   // 图的预处理
@@ -90,4 +90,4 @@ void KTruss(const EdgeT *nodeIndex, const NodeT *edgesSecond,
             EdgeT *edgesSup);
 
 // 获取各层次truss的边的数量
-bool displayStats(const EdgeT *EdgeSupport, EdgeT halfEdgesNum, NodeT minK);
+NodeT displayStats(const EdgeT *EdgeSupport, EdgeT halfEdgesNum, NodeT minK);

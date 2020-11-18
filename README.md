@@ -273,10 +273,10 @@ cpu cores       : 4
 
 | **数据集**            | **单线程(ms)** | **多线程(ms)** |
 |:---------------------:|:-----------:|:-----------:|
-| s18.e16.rmat.edgelist | 25757       | 3299        |
-| s19.e16.rmat.edgelist | 61444       | 7860        |
-| cit-Patents           | 2168        | 554         |
-| soc-LiveJournal       | 32016       | 4613        |
+| s18.e16.rmat.edgelist | 24090       | 3278        |
+| s19.e16.rmat.edgelist | 56781       | 7529        |
+| cit-Patents           | 2199        | 613         |
+| soc-LiveJournal       | 18427       | 3346        |
 
 ## 程序代码模块说明
 

@@ -59,7 +59,7 @@ NodeT Graph::GetMaxK() {
 }
 
 // 获取max-k-truss主流程
-bool Graph::MaxKTruss(NodeT startK) {
+NodeT Graph::MaxKTruss(NodeT startK) {
   startK_ = startK;
 
   // 预处理
@@ -75,10 +75,9 @@ bool Graph::MaxKTruss(NodeT startK) {
   log_info(trussClock.Count("KTruss"));
 
   // 打印信息
-  bool isValid = displayStats(edgesSup_, halfEdgesNum_, startK_);
-  log_info(trussClock.Count("displayStats isValid: %d", isValid));
+  NodeT possibleKMax = displayStats(edgesSup_, halfEdgesNum_, startK_);
 
-  return isValid;
+  return possibleKMax;
 }
 
 // 图的预处理
@@ -460,7 +459,7 @@ void KTruss(const EdgeT *nodeIndex, const NodeT *edgesSecond,
 }
 
 // 获取各层次truss的边的数量
-bool displayStats(const EdgeT *EdgeSupport, EdgeT halfEdgesNum, NodeT minK) {
+NodeT displayStats(const EdgeT *EdgeSupport, EdgeT halfEdgesNum, NodeT minK) {
   NodeT minSup = std::numeric_limits<NodeT>::max();
   NodeT maxSup = 0;
 
@@ -498,10 +497,9 @@ bool displayStats(const EdgeT *EdgeSupport, EdgeT halfEdgesNum, NodeT minK) {
            numEdgesWithMinSup);
   log_info("Max-truss: %u  Edges in Max-truss: %u", maxSup + 2,
            numEdgesWithMaxSup);
-  if (numEdgesWithMaxSup == 0 || maxSup < minK) {
-    return false;
+  if (maxSup + 2 >= minK) {
+    printf("kmax = %u, Edges in kmax-truss = %u.\n", maxSup + 2,
+           numEdgesWithMaxSup);
   }
-  printf("kmax = %u, Edges in kmax-truss = %u.\n", maxSup + 2,
-         numEdgesWithMaxSup);
-  return true;
+  return maxSup + 2;
 }
