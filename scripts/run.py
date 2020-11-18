@@ -40,19 +40,19 @@ def download():
 def time_analysis(cmd, data_path, result, count=1, para=""):
     t = list()
     for i in range(count):
-        p = subprocess.Popen("perf stat {}/{} -f {} {}".format(project_folder, cmd, data_path, para), shell=True,
+        args = ["time", os.path.join(project_folder, cmd), "-f", data_path, para]
+        start = time.time()
+        p = subprocess.Popen(" ".join(args), shell=True,
                              stdout=subprocess.PIPE,
                              stderr=subprocess.STDOUT)
-        for line in iter(p.stdout.readline, 'b'):
-            line = line.decode().strip()
-            if "Edges in kmax-truss = " in line:
-                if line != result:
-                    print("result is wrong!!!")
-                    print("{} {} {} {}".format(cmd, data_path, line, result))
-                    exit(-1)
-            if "seconds time elapsed" in line:
-                t.append(float(line.split(' ')[0]) * 1000)
-                break
+        stdout_output, stderr_output = p.communicate()
+        cost_time = (time.time() - start) * 1000
+        t.append(cost_time)
+        line = stdout_output.decode().split("\n")[0]
+        if line != result:
+            print("result is wrong!!!")
+            print("{} {} {} {}".format(cmd, data_path, line, result))
+            exit(-1)
     # print("cmd: {} data_path: {} para: {} count: {} min: {:.0f}ms max: {:.0f}ms avg: {:.0f}ms median: {:.0f}ms"
     #       .format(cmd, data_path, para, count, min(t), max(t), sum(t) / len(t), sorted(t)[len(t) // 2]))
     return min(t), max(t), sum(t) / len(t), sorted(t)[len(t) // 2]
