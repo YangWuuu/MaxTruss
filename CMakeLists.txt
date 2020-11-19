@@ -57,7 +57,7 @@ if(CUDA_FOUND)
         set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -Xcompiler=${OpenMP_CXX_FLAGS}")
     endif(OPENMP_FOUND)
 
-    cuda_add_executable(test_cuda src/main.cu)
+    cuda_add_executable(test_cuda src/main.cu src/log.cpp)
 
 else()
     message("CUDA NOT FOUND")
