@@ -49,6 +49,8 @@ def download():
 
 def kron_gen():
     os.chdir(project_folder)
+    if not os.path.exists(data_folder):
+        os.mkdir(data_folder)
     if not os.path.exists(os.path.join(data_folder, "s18.e16.tsv")):
         os.system("./kron_gen 18 16")
     if not os.path.exists(os.path.join(data_folder, "s19.e16.tsv")):
