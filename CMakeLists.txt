@@ -36,3 +36,5 @@ add_executable(kmax_truss ${SRC_FILES})
 
 add_executable(kmax_truss_serial ${SRC_FILES})
 target_compile_definitions(kmax_truss_serial PRIVATE SERIAL=)
+
+add_executable(kron_gen src/kron_gen.cpp src/log.cpp)

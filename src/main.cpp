@@ -1,5 +1,3 @@
-#include <omp.h>
-
 #include <string>
 
 #include "clock.h"
@@ -7,8 +5,6 @@
 #include "log.h"
 #include "read_file.h"
 #include "util.h"
-
-#pragma ide diagnostic ignored "openmp-use-default-none"
 
 int main(int argc, char *argv[]) {
   // 打印日志
@@ -83,7 +79,6 @@ int main(int argc, char *argv[]) {
       break;
     }
   }
-
 
   log_info(allClock.Count("End"));
   return 0;

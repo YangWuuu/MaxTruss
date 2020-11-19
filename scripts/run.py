@@ -9,22 +9,22 @@ project_folder = os.path.abspath(os.path.join(os.path.dirname(__file__), os.path
 data_folder = os.path.join(project_folder, "data")
 
 data_and_results = [
-    ["s18.e16.rmat.edgelist.tsv", "kmax = 164, Edges in kmax-truss = 225529."],
-    ["s19.e16.rmat.edgelist.tsv", "kmax = 223, Edges in kmax-truss = 334934."],
-    ["cit-Patents.tsv", "kmax = 36, Edges in kmax-truss = 2625."],
-    ["soc-LiveJournal.tsv", "kmax = 362, Edges in kmax-truss = 72913."],
+    # ["s18.e16.rmat.edgelist.tsv", "kmax = 164, Edges in kmax-truss = 225529."],
+    # ["s19.e16.rmat.edgelist.tsv", "kmax = 223, Edges in kmax-truss = 334934."],
+    # ["cit-Patents.tsv", "kmax = 36, Edges in kmax-truss = 2625."],
+    # ["soc-LiveJournal.tsv", "kmax = 362, Edges in kmax-truss = 72913."],
+    ["s18.e16.tsv", "kmax = 165, Edges in kmax-truss = 221384."],
+    ["s19.e16.tsv", "kmax = 225, Edges in kmax-truss = 323511."],
 ]
 
 
-def recu_down(url, filename):
-    try:
-        urllib.request.urlretrieve(url, filename)
-    except urllib.error.ContentTooShortError:
-        print('Network conditions is not good. Reloading...')
-        recu_down(url, filename)
-
-
 def download():
+    def recu_down(url, filename):
+        try:
+            urllib.request.urlretrieve(url, filename)
+        except urllib.error.ContentTooShortError:
+            print('Network conditions is not good. Reloading...')
+            recu_down(url, filename)
     os.chdir(project_folder)
     url = "http://datafountain.int-yt.com/Files/BDCI2020/473HuaKeDaKtruss/ktruss-data.zip"
     if not os.path.exists(data_folder):
@@ -40,9 +40,25 @@ def download():
         for d, _ in data_and_results:
             src_path = os.path.join(data_folder, "ktruss-data", d)
             dst_path = os.path.join(data_folder, d)
+            if not os.path.exists(src_path):
+                continue
             shutil.move(src_path, dst_path)
         os.rmdir(os.path.join(data_folder, "ktruss-data"))
         print("all cost: {}s".format(int(time.time() - start)))
+
+
+def kron_gen():
+    os.chdir(project_folder)
+    if not os.path.exists(os.path.join(data_folder, "s18.e16.tsv")):
+        os.system("./kron_gen 18 16")
+    if not os.path.exists(os.path.join(data_folder, "s19.e16.tsv")):
+        os.system("./kron_gen 19 16")
+    for d, _ in data_and_results:
+        src_path = os.path.join(d)
+        dst_path = os.path.join(data_folder, d)
+        if not os.path.exists(src_path):
+            continue
+        shutil.move(src_path, dst_path)
 
 
 def time_analysis(cmd, data_path, result, count=1, para=""):
@@ -73,11 +89,12 @@ def main():
     ]
     print("project_folder: {}".format(project_folder))
     os.chdir(project_folder)
-    download()
+    # download()
     for cmd in cmds:
         if os.path.exists(cmd[0]):
             os.remove(cmd[0])
     os.system("make")
+    kron_gen()
     start = time.time()
     for cmd in cmds:
         for d in data_and_results:
