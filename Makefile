@@ -11,7 +11,7 @@ kmax_truss_serial :
 	$(CXX) $(CXXFLAGS) ${SRC_FILES} -D SERIAL -o $@
 
 kron_gen :
-	$(CXX) $(CXXFLAGS) src/kron_gen.cpp src/log.cpp -D SERIAL -o $@
+	$(CXX) $(CXXFLAGS) src/kron_gen.cpp src/log.cpp -o $@
 
 .PHONY : clean
 clean :

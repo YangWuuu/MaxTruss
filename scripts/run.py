@@ -13,8 +13,8 @@ data_and_results = [
     # ["s19.e16.rmat.edgelist.tsv", "kmax = 223, Edges in kmax-truss = 334934."],
     # ["cit-Patents.tsv", "kmax = 36, Edges in kmax-truss = 2625."],
     # ["soc-LiveJournal.tsv", "kmax = 362, Edges in kmax-truss = 72913."],
-    ["s18.e16.tsv", "kmax = 165, Edges in kmax-truss = 221384."],
-    ["s19.e16.tsv", "kmax = 225, Edges in kmax-truss = 323511."],
+    ["s18.e16.tsv", "kmax = 164, Edges in kmax-truss = 226780."],
+    ["s19.e16.tsv", "kmax = 226, Edges in kmax-truss = 332802."],
 ]
 
 
