@@ -1,6 +1,6 @@
 CXX=g++
 CXXFLAGS=-O3 -std=c++11 -fopenmp -Iinclude
-SRC_FILES=src/main.cpp src/log.cpp src/read_file.cpp src/graph.cpp
+SRC_FILES=src/main.cpp src/log.cpp src/read_file.cpp src/graph.cpp src/ktruss.cpp src/kcore.cpp
 
 all : kmax_truss kmax_truss_serial kron_gen
 
@@ -15,4 +15,4 @@ kron_gen :
 
 .PHONY : clean
 clean :
-	rm kmax_truss kmax_truss_serial
+	rm kmax_truss kmax_truss_serial kron_gen

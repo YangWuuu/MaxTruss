@@ -30,7 +30,7 @@ endif()
 include_directories(include)
 set(EXECUTABLE_OUTPUT_PATH ${CMAKE_CURRENT_SOURCE_DIR}/bin)
 
-set(SRC_FILES src/main.cpp src/log.cpp src/read_file.cpp src/graph.cpp)
+set(SRC_FILES src/main.cpp src/log.cpp src/read_file.cpp src/graph.cpp src/ktruss.cpp src/kcore.cpp)
 
 add_executable(kmax_truss ${SRC_FILES})
 

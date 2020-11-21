@@ -6,7 +6,7 @@
 #include "read_file.h"
 #include "util.h"
 
-int main(int argc, char *argv[]) {
+void Log(int argc, char *argv[]) {
   // 打印日志
   std::string logFlag = std::string(argv[argc - 1]);
   if (logFlag == "debug") {
@@ -28,6 +28,10 @@ int main(int argc, char *argv[]) {
     arg_string += std::string(argv[i]) + " ";
   }
   log_info("argc: %d argv is %s", argc, arg_string.c_str());
+}
+
+int main(int argc, char *argv[]) {
+  Log(argc, argv);
 
   std::string filePath = GetFileName(argc, argv);
 
@@ -44,18 +48,7 @@ int main(int argc, char *argv[]) {
   // TODO Graph中内存需要统一全局分配
   NodeT maxK = graph.GetMaxK();
 
-  double shrinkSize = 5;
-  if (argc >= 4) {
-    std::string shrinkStr = argv[3];
-    if (shrinkStr != "debug" && shrinkStr != "info") {
-      shrinkSize = std::stod(argv[3]);
-    }
-  }
-  if (shrinkSize <= 1.4 || shrinkSize > 100) {
-    shrinkSize = 1.5;
-  }
-  log_info("shrinkSize: %.3f", shrinkSize);
-  NodeT startK = maxK / shrinkSize;
+  NodeT startK = maxK - 1;
 
   while (true) {
     NodeT possibleKMax1 = graph.MaxKTruss(startK);

@@ -1,61 +1,48 @@
 #include "graph.h"
 
 #include <algorithm>
+#include <cstring>
 #include <map>
 
 #pragma ide diagnostic ignored "openmp-use-default-none"
 
 NodeT Graph::GetMaxK() {
-  log_info(preprocessClock.Start());
+  log_info(coreClock_.Start());
+
   rawDeg_ = (NodeT *)calloc(rawNodesNum_, sizeof(NodeT));
   ::CalDeg(rawEdges_, rawEdgesNum_, rawDeg_);
-  log_info(preprocessClock.Count("rawDeg_"));
+  log_info(coreClock_.Count("rawDeg_"));
 
-//  auto *degNum = (EdgeT *)calloc(rawNodesNum_, sizeof(EdgeT));
-//  //here sync fetch add is slow
-//  //#ifndef SERIAL
-//  //#pragma omp parallel for
-//  //#endif
-//  for (int i = 0; i < rawNodesNum_; i++) {
-//    //    __sync_fetch_and_add(&degNum[rawDeg_[i]], 1);
-//    degNum[rawDeg_[i]]++;
-//  }
-//  log_info(preprocessClock.Count("degNum"));
-//
-//  NodeT maxK = 0;
-//  NodeT reverseCount = 0;
-//  for (auto m = rawNodesNum_ - 1; m != 0; m--) {
-//    NodeT proposedKMax = m + 1;
-//    reverseCount += degNum[m];
-//    if (reverseCount >= proposedKMax) {
-//      maxK = proposedKMax;
-//      break;
-//    }
-//  }
+  ::Unzip(rawEdges_, rawEdgesNum_, rawEdgesFirst_, rawEdgesSecond_);
+  log_info(coreClock_.Count("Unzip"));
 
+  ::NodeIndex(rawDeg_, rawNodesNum_, rawNodeIndex_);
+  log_info(coreClock_.Count("NodeIndex"));
+
+  rawCore_ = (NodeT *)malloc(rawNodesNum_ * sizeof(NodeT));
   // TODO parallel
-  std::map<NodeT, NodeT> degNum;
-  for (int i = 0; i < rawNodesNum_; i++) {
-    if (degNum.count(rawDeg_[i]) == 0) {
-      degNum[rawDeg_[i]] = 0;
-    }
-    degNum[rawDeg_[i]]++;
-  }
-  log_info(preprocessClock.Count("degNum"));
+  memcpy(rawCore_, rawDeg_, rawNodesNum_ * sizeof(NodeT));
+  log_info(coreClock_.Count("rawCore_"));
 
-  NodeT maxK = 0;
-  NodeT reverseCount = 0;
-  for (auto m = degNum.rbegin(); m != degNum.rend(); m++) {
-    NodeT proposedKMax = m->first + 1;
-    reverseCount += m->second;
-    if (reverseCount >= proposedKMax) {
-      maxK = proposedKMax;
-      break;
-    }
-  }
+  KCore(rawNodeIndex_, rawEdgesSecond_, rawNodesNum_, rawCore_);
+  log_info(coreClock_.Count("KCore"));
 
-  log_info(preprocessClock.Count("maxK: %u", maxK));
-  return maxK;
+  NodeT maxCoreNum = 0;
+#pragma omp parallel for reduction(max : maxCoreNum)
+  for (NodeT i = 0; i < rawNodesNum_; i++) {
+    maxCoreNum = std::max(maxCoreNum, rawCore_[i]);
+  }
+  ++maxCoreNum;
+  auto *histogram = (NodeT *)calloc(maxCoreNum, sizeof(NodeT));
+#pragma omp parallel for
+  for (NodeT i = 0; i < rawNodesNum_; i++) {
+    NodeT coreVal = rawCore_[i];
+    __sync_fetch_and_add(&histogram[coreVal], 1);
+  }
+  log_info(coreClock_.Count("histogram"));
+
+  log_info(coreClock_.Count("maxK: %u", maxCoreNum - 1));
+  return maxCoreNum - 1;
 }
 
 // 获取max-k-truss主流程
@@ -64,15 +51,18 @@ NodeT Graph::MaxKTruss(NodeT startK) {
 
   // 预处理
   Preprocess();
+  if (edgesNum_ == 0) {
+    return 0;
+  }
 
   // 三角形计数
   TriCount();
 
   // 求解k-truss
-  log_info(trussClock.Start());
+  log_info(trussClock_.Start());
   ::KTruss(nodeIndex_, edgesSecond_, edgesId_, halfEdges_, halfEdgesNum_,
            edgesSup_);
-  log_info(trussClock.Count("KTruss"));
+  log_info(trussClock_.Count("KTruss"));
 
   // 打印信息
   NodeT possibleKMax = displayStats(edgesSup_, halfEdgesNum_, startK_);
@@ -82,71 +72,77 @@ NodeT Graph::MaxKTruss(NodeT startK) {
 
 // 图的预处理
 void Graph::Preprocess() {
-  log_info(preprocessClock.Start());
-  log_info(preprocessClock.Count("startK_: %u", startK_));
+  log_info(preprocessClock_.Start());
+  log_info(preprocessClock_.Count("startK_: %u", startK_));
 
-  if (startK_ > 10u) {
+  if (startK_ > 0u) {
     RemoveEdges();
+    if (edgesNum_ == 0) {
+      return;
+    }
     nodesNum_ = FIRST(edges_[edgesNum_ - 1]) + 1;
-    log_info(preprocessClock.Count("nodesNum_: %u", nodesNum_));
+    log_info(preprocessClock_.Count("nodesNum_: %u", nodesNum_));
+
     deg_ = (NodeT *)calloc(nodesNum_, sizeof(NodeT));
     ::CalDeg(edges_, edgesNum_, deg_);
-    log_info(preprocessClock.Count("cal deg"));
+    log_info(preprocessClock_.Count("cal deg"));
+
+    ::Unzip(edges_, edgesNum_, edgesFirst_, edgesSecond_);
+    log_info(preprocessClock_.Count("Unzip"));
+
+    ::NodeIndex(deg_, nodesNum_, nodeIndex_);
+    log_info(preprocessClock_.Count("NodeIndex"));
   } else {
     startK_ = 0;
     edges_ = rawEdges_;
     edgesNum_ = rawEdgesNum_;
     nodesNum_ = rawNodesNum_;
     deg_ = rawDeg_;
-    log_info(preprocessClock.Count("nodesNum_: %u", nodesNum_));
+    edgesFirst_ = rawEdgesFirst_;
+    edgesSecond_ = rawEdgesSecond_;
+    nodeIndex_ = rawNodeIndex_;
+    log_info(preprocessClock_.Count("nodesNum_: %u", nodesNum_));
   }
-
-  ::Unzip(edges_, edgesNum_, edgesFirst_, edgesSecond_);
-  log_info(preprocessClock.Count("Unzip"));
 
   halfEdgesNum_ = edgesNum_ / 2;
   halfEdges_ = (uint64_t *)malloc(halfEdgesNum_ * sizeof(uint64_t));
   // TODO parallel
   std::copy_if(edges_, edges_ + edgesNum_, halfEdges_,
                [](const uint64_t &edge) { return FIRST(edge) < SECOND(edge); });
-  log_info(preprocessClock.Count("halfEdgesNum_: %u", halfEdgesNum_));
-
-  ::NodeIndex(deg_, nodesNum_, nodeIndex_);
-  log_info(preprocessClock.Count("NodeIndex"));
+  log_info(preprocessClock_.Count("halfEdgesNum_: %u", halfEdgesNum_));
 
   GetEdgesId();
-  log_info(preprocessClock.Count("GetEdgesId"));
+  log_info(preprocessClock_.Count("GetEdgesId"));
 }
 
 // 图的裁剪
 void Graph::RemoveEdges() {
-    edges_ = (uint64_t *)malloc(rawEdgesNum_ * sizeof(uint64_t));
+  edges_ = (uint64_t *)malloc(rawEdgesNum_ * sizeof(uint64_t));
   // TODO parallel
-  // TODO 这里可以做的更彻底一点
   edgesNum_ = std::copy_if(rawEdges_, rawEdges_ + rawEdgesNum_, edges_,
                            [&](const uint64_t edge) {
-                             return rawDeg_[FIRST(edge)] > startK_ &&
-                                    rawDeg_[SECOND(edge)] > startK_;
+                             return rawCore_[FIRST(edge)] > startK_ &&
+                                    rawCore_[SECOND(edge)] > startK_;
                            }) -
               edges_;
 
-  log_info(preprocessClock.Count("edgesNum_: %u", edgesNum_));
+  log_info(preprocessClock_.Count("edgesNum_: %u", edgesNum_));
 }
 
 // 三角形计数
 void Graph::TriCount() {
-  log_info(triCountClock.Start());
+  log_info(triCountClock_.Start());
   edgesSup_ = (EdgeT *)calloc(halfEdgesNum_, sizeof(EdgeT));
   GetEdgeSup(halfEdges_, halfEdgesNum_, halfEdgesFirst_, halfEdgesSecond_,
              halfDeg_, nodesNum_, halfNodeIndex_, edgesSup_);
-  log_info(triCountClock.Count("Count"));
+  log_info(triCountClock_.Count("Count"));
 
   // TODO can remove
   uint64_t count = 0;
   for (uint64_t i = 0; i < halfEdgesNum_; i++) {
     count += edgesSup_[i];
   }
-  log_info(triCountClock.Count("triangle count: %lu", count / 3));
+  log_info(triCountClock_.Count("triangle count: %lu", count / 3));
 }
 
 // 边编号
@@ -165,10 +161,8 @@ void Graph::GetEdgesId() {
       if (u < v) {
         edgesId_[j] = edgeId;
         nodeIndexCopy[u]++;
-        if (edgesSecond_[nodeIndexCopy[v]] == u) {
-          edgesId_[nodeIndexCopy[v]] = edgeId;
-          nodeIndexCopy[v]++;
-        }
+        edgesId_[nodeIndexCopy[v]] = edgeId;
+        nodeIndexCopy[v]++;
         edgeId++;
       }
     }
@@ -290,216 +284,4 @@ void GetEdgeSup(const uint64_t *halfEdges, EdgeT halfEdgesNum,
       }
     }
   }
-}
-
-// 并行扫描支持边是否与truss层次相同
-void Scan(EdgeT numEdges, const EdgeT *edgesSup, int level, EdgeT *curr,
-          EdgeT &currTail, bool *inCurr) {
-  NodeT buff[BUFFER_SIZE];
-  EdgeT index = 0;
-
-#pragma omp for
-  for (EdgeT i = 0; i < numEdges; i++) {
-    if (edgesSup[i] == level) {
-      buff[index] = i;
-      inCurr[i] = true;
-      index++;
-
-      if (index >= BUFFER_SIZE) {
-        EdgeT tempIdx = __sync_fetch_and_add(&currTail, BUFFER_SIZE);
-        for (EdgeT j = 0; j < BUFFER_SIZE; j++) {
-          curr[tempIdx + j] = buff[j];
-        }
-        index = 0;
-      }
-    }
-  }
-
-  if (index > 0) {
-    EdgeT tempIdx = __sync_fetch_and_add(&currTail, index);
-    for (EdgeT j = 0; j < index; j++) {
-      curr[tempIdx + j] = buff[j];
-    }
-  }
-#pragma omp barrier
-}
-
-// 更新支持边的数值
-void UpdateSup(EdgeT e, EdgeT *edgesSup, int level, NodeT *buff, EdgeT &index,
-               EdgeT *next, bool *inNext, EdgeT &nextTail) {
-  int supE = __sync_fetch_and_sub(&edgesSup[e], 1);
-
-  if (supE == (level + 1)) {
-    buff[index] = e;
-    inNext[e] = true;
-    index++;
-  }
-
-  if (supE <= level) {
-    __sync_fetch_and_add(&edgesSup[e], 1);
-  }
-
-  if (index >= BUFFER_SIZE) {
-    EdgeT tempIdx = __sync_fetch_and_add(&nextTail, BUFFER_SIZE);
-    for (EdgeT bufIdx = 0; bufIdx < BUFFER_SIZE; bufIdx++)
-      next[tempIdx + bufIdx] = buff[bufIdx];
-    index = 0;
-  }
-}
-
-// 子任务循环迭代消减truss
-void SubLevel(const EdgeT *nodeIndex, const NodeT *edgesSecond,
-              const EdgeT *curr, bool *inCurr, EdgeT currTail, EdgeT *edgesSup,
-              int level, EdgeT *next, bool *inNext, EdgeT &nextTail,
-              bool *processed, const EdgeT *edgesId,
-              const uint64_t *halfEdges) {
-  NodeT buff[BUFFER_SIZE];
-  EdgeT index = 0;
-
-#pragma omp for schedule(dynamic, 8)
-  for (EdgeT i = 0; i < currTail; i++) {
-    // process edge <u,v>
-    EdgeT e1 = curr[i];
-    NodeT u = FIRST(halfEdges[e1]);
-    NodeT v = SECOND(halfEdges[e1]);
-
-    EdgeT uStart = nodeIndex[u], uEnd = nodeIndex[u + 1];
-    EdgeT vStart = nodeIndex[v], vEnd = nodeIndex[v + 1];
-    while (uStart < uEnd && vStart < vEnd) {
-      if (edgesSecond[uStart] < edgesSecond[vStart]) {
-        ++uStart;
-      } else if (edgesSecond[uStart] > edgesSecond[vStart]) {
-        ++vStart;
-      } else {
-        EdgeT e2 = edgesId[uStart];
-        EdgeT e3 = edgesId[vStart];
-        ++uStart;
-        ++vStart;
-        if (processed[e2] || processed[e3]) {
-          continue;
-        }
-        if (edgesSup[e2] > level && edgesSup[e3] > level) {
-          UpdateSup(e2, edgesSup, level, buff, index, next, inNext, nextTail);
-          UpdateSup(e3, edgesSup, level, buff, index, next, inNext, nextTail);
-        } else if (edgesSup[e2] > level) {
-          if ((e1 < e3 && inCurr[e3]) || !inCurr[e3]) {
-            UpdateSup(e2, edgesSup, level, buff, index, next, inNext, nextTail);
-          }
-        } else if (edgesSup[e3] > level) {
-          if ((e1 < e2 && inCurr[e2]) || !inCurr[e2]) {
-            UpdateSup(e3, edgesSup, level, buff, index, next, inNext, nextTail);
-          }
-        }
-      }
-    }
-  }
-
-  if (index > 0) {
-    EdgeT tempIdx = __sync_fetch_and_add(&nextTail, index);
-    for (EdgeT bufIdx = 0; bufIdx < index; bufIdx++) {
-      next[tempIdx + bufIdx] = buff[bufIdx];
-    }
-  }
-#pragma omp barrier
-
-#pragma omp for
-  for (EdgeT i = 0; i < currTail; i++) {
-    EdgeT e = curr[i];
-    processed[e] = true;
-    inCurr[e] = false;
-  }
-}
-
-// 求解k-truss的主流程
-void KTruss(const EdgeT *nodeIndex, const NodeT *edgesSecond,
-            const EdgeT *edgesId, const uint64_t *halfEdges, EdgeT halfEdgesNum,
-            EdgeT *edgesSup) {
-  EdgeT currTail = 0;
-  EdgeT nextTail = 0;
-  auto *processed = (bool *)calloc(halfEdgesNum, sizeof(bool));
-  auto *curr = (EdgeT *)calloc(halfEdgesNum, sizeof(EdgeT));
-  auto *inCurr = (bool *)calloc(halfEdgesNum, sizeof(bool));
-  auto *next = (EdgeT *)calloc(halfEdgesNum, sizeof(EdgeT));
-  auto *inNext = (bool *)calloc(halfEdgesNum, sizeof(bool));
-
-#ifndef SERIAL
-#pragma omp parallel
-#endif
-  {
-    int tid = omp_get_thread_num();
-
-    int level = 0;
-    EdgeT todo = halfEdgesNum;
-    while (todo > 0) {
-      Scan(halfEdgesNum, edgesSup, level, curr, currTail, inCurr);
-      while (currTail > 0) {
-        todo = todo - currTail;
-        SubLevel(nodeIndex, edgesSecond, curr, inCurr, currTail, edgesSup,
-                 level, next, inNext, nextTail, processed, edgesId, halfEdges);
-        if (tid == 0) {
-          EdgeT *tempCurr = curr;
-          curr = next;
-          next = tempCurr;
-
-          bool *tempInCurr = inCurr;
-          inCurr = inNext;
-          inNext = tempInCurr;
-
-          currTail = nextTail;
-          nextTail = 0;
-
-          log_debug("level: %d restEdges: %lu", level, todo);
-        }
-#pragma omp barrier
-      }
-      level = level + 1;
-#pragma omp barrier
-    }
-  }
-}
-
-// 获取各层次truss的边的数量
-NodeT displayStats(const EdgeT *EdgeSupport, EdgeT halfEdgesNum, NodeT minK) {
-  NodeT minSup = std::numeric_limits<NodeT>::max();
-  NodeT maxSup = 0;
-
-  for (EdgeT i = 0; i < halfEdgesNum; i++) {
-    if (minSup > EdgeSupport[i]) {
-      minSup = EdgeSupport[i];
-    }
-    if (maxSup < EdgeSupport[i]) {
-      maxSup = EdgeSupport[i];
-    }
-  }
-
-  EdgeT numEdgesWithMinSup = 0;
-  EdgeT numEdgesWithMaxSup = 0;
-  for (EdgeT i = 0; i < halfEdgesNum; i++) {
-    if (EdgeSupport[i] == minSup) {
-      numEdgesWithMinSup++;
-    }
-    if (EdgeSupport[i] == maxSup) {
-      numEdgesWithMaxSup++;
-    }
-  }
-
-  std::vector<uint64_t> sups(maxSup + 1);
-  for (EdgeT i = 0; i < halfEdgesNum; i++) {
-    sups[EdgeSupport[i]]++;
-  }
-  for (int i = 0; i < maxSup + 1; i++) {
-    if (sups[i] > 0) {
-      log_debug("k: %d  edges: %lu", i + 2, sups[i]);
-    }
-  }
-
-  log_info("Min-truss: %u  Edges in Min-truss: %u", minSup + 2,
-           numEdgesWithMinSup);
-  log_info("Max-truss: %u  Edges in Max-truss: %u", maxSup + 2,
-           numEdgesWithMaxSup);
-  if (maxSup + 2 >= minK) {
-    printf("kmax = %u, Edges in kmax-truss = %u.\n", maxSup + 2,
-           numEdgesWithMaxSup);
-  }
-  return maxSup + 2;
 }

@@ -9,9 +9,10 @@ class Graph {
   Graph(uint64_t *edges, EdgeT edgesNum)
       : rawEdges_(edges),
         rawEdgesNum_(edgesNum),
-        preprocessClock("Preprocess"),
-        triCountClock("TriCount"),
-        trussClock("Truss") {
+        coreClock_("kCore"),
+        preprocessClock_("Preprocess"),
+        triCountClock_("TriCount"),
+        trussClock_("Truss") {
     rawNodesNum_ = FIRST(rawEdges_[rawEdgesNum_ - 1]) + 1;
   }
 
@@ -33,9 +34,10 @@ class Graph {
   void TriCount();
 
   // 计时
-  Clock preprocessClock;
-  Clock triCountClock;
-  Clock trussClock;
+  Clock coreClock_;
+  Clock preprocessClock_;
+  Clock triCountClock_;
+  Clock trussClock_;
 
   NodeT startK_{0};
 
@@ -44,6 +46,10 @@ class Graph {
   EdgeT rawEdgesNum_;
   NodeT rawNodesNum_;
   NodeT *rawDeg_{nullptr};
+  NodeT *rawCore_{nullptr};
+  NodeT *rawEdgesFirst_{nullptr};
+  NodeT *rawEdgesSecond_{nullptr};
+  EdgeT *rawNodeIndex_{nullptr};
 
   // 新图信息
   uint64_t *edges_{nullptr};
@@ -91,3 +97,6 @@ void KTruss(const EdgeT *nodeIndex, const NodeT *edgesSecond,
 
 // 获取各层次truss的边的数量
 NodeT displayStats(const EdgeT *EdgeSupport, EdgeT halfEdgesNum, NodeT minK);
+
+void KCore(const EdgeT *nodeIndex, const NodeT *edgesSecond, NodeT nodesNum,
+           NodeT *deg);

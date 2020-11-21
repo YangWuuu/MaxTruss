@@ -9,10 +9,10 @@ project_folder = os.path.abspath(os.path.join(os.path.dirname(__file__), os.path
 data_folder = os.path.join(project_folder, "data")
 
 data_and_results = [
-    # ["s18.e16.rmat.edgelist.tsv", "kmax = 164, Edges in kmax-truss = 225529."],
-    # ["s19.e16.rmat.edgelist.tsv", "kmax = 223, Edges in kmax-truss = 334934."],
-    # ["cit-Patents.tsv", "kmax = 36, Edges in kmax-truss = 2625."],
-    # ["soc-LiveJournal.tsv", "kmax = 362, Edges in kmax-truss = 72913."],
+    ["s18.e16.rmat.edgelist.tsv", "kmax = 164, Edges in kmax-truss = 225529."],
+    ["s19.e16.rmat.edgelist.tsv", "kmax = 223, Edges in kmax-truss = 334934."],
+    ["cit-Patents.tsv", "kmax = 36, Edges in kmax-truss = 2625."],
+    ["soc-LiveJournal.tsv", "kmax = 362, Edges in kmax-truss = 72913."],
     ["s18.e16.tsv", "kmax = 164, Edges in kmax-truss = 226780."],
     ["s19.e16.tsv", "kmax = 226, Edges in kmax-truss = 332802."],
 ]
@@ -95,6 +95,8 @@ def main():
     for cmd in cmds:
         if os.path.exists(cmd[0]):
             os.remove(cmd[0])
+    if os.path.exists("kron_gen"):
+        os.remove("kron_gen")
     os.system("make")
     kron_gen()
     start = time.time()
