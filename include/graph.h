@@ -7,12 +7,12 @@
 class Graph {
  public:
   Graph(uint64_t *edges, EdgeT edgesNum)
-      : rawEdges_(edges),
-        rawEdgesNum_(edgesNum),
-        coreClock_("kCore"),
+      : coreClock_("kCore"),
         preprocessClock_("Preprocess"),
         triCountClock_("TriCount"),
-        trussClock_("Truss") {
+        trussClock_("Truss"),
+        rawEdges_(edges),
+        rawEdgesNum_(edgesNum) {
     rawNodesNum_ = FIRST(rawEdges_[rawEdgesNum_ - 1]) + 1;
   }
 
@@ -28,8 +28,6 @@ class Graph {
   void Preprocess();
   // 图的裁剪
   void RemoveEdges();
-  // 边编号
-  void GetEdgesId();
   // 三角形计数
   void TriCount();
 
@@ -42,9 +40,9 @@ class Graph {
   NodeT startK_{0};
 
   // 原始图信息
-  uint64_t *rawEdges_;
-  EdgeT rawEdgesNum_;
-  NodeT rawNodesNum_;
+  uint64_t *rawEdges_{nullptr};
+  EdgeT rawEdgesNum_{};
+  NodeT rawNodesNum_{};
   NodeT *rawDeg_{nullptr};
   NodeT *rawCore_{nullptr};
   NodeT *rawEdgesFirst_{nullptr};
@@ -75,7 +73,7 @@ class Graph {
 };
 
 // 计算节点的度
-void CalDeg(const uint64_t *edges, EdgeT edgesNum, NodeT *deg);
+void CalDeg(const uint64_t *edges, EdgeT edgesNum, NodeT nodesNum, NodeT *&deg);
 
 // 边的解压缩
 void Unzip(const uint64_t *edges, EdgeT edgesNum, NodeT *&edgesFirst,
@@ -84,11 +82,14 @@ void Unzip(const uint64_t *edges, EdgeT edgesNum, NodeT *&edgesFirst,
 // 转换CSR格式
 void NodeIndex(const NodeT *deg, NodeT nodesNum, EdgeT *&nodeIndex);
 
+// 获取边序号
+void GetEdgesId(const uint64_t *edges, EdgeT edgesNum, EdgeT *&edgesId,
+                const EdgeT *halfNodeIndex, const NodeT *halfEdgesSecond);
+
 // 三角形计数获取支持边数量
-void GetEdgeSup(const uint64_t *halfEdges, EdgeT halfEdgesNum,
-                NodeT *&halfEdgesFirst, NodeT *&halfEdgesSecond,
-                NodeT *&halfDeg, NodeT nodesNum, EdgeT *&halfNodeIndex,
-                NodeT *edgesSup);
+void GetEdgeSup(EdgeT halfEdgesNum, NodeT *&halfEdgesFirst,
+                NodeT *&halfEdgesSecond, NodeT *&halfDeg, EdgeT *&halfNodeIndex,
+                NodeT *&edgesSup);
 
 // 求解k-truss的主流程
 void KTruss(const EdgeT *nodeIndex, const NodeT *edgesSecond,

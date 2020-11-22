@@ -29,7 +29,9 @@ uint64_t ReadFile::ConstructEdges(uint64_t *&edges) {
       "edges malloc %.2fMB", (double)lineNum * sizeof(uint64_t) / 1024 / 1024));
 
   uint64_t edgesNum = GetEdges(edges);
-  log_info(readFileClock_.Count("edgesNum: %lu", edgesNum));
+  log_info(
+      readFileClock_.Count("edgesNum: %lu %.2fMB", edgesNum,
+                           (double)edgesNum * sizeof(uint64_t) / 1024 / 1024));
 
   return edgesNum;
 }
@@ -88,9 +90,7 @@ uint64_t GetLineNum(const char *byte, uint64_t len) {
   }
   uint64_t lineNum = 0;
 
-#ifndef SERIAL
 #pragma omp parallel for reduction(+ : lineNum)
-#endif
   for (uint64_t pos = 0; pos < len; pos++) {
     if (*(byte + pos) == '\n') {
       ++lineNum;

@@ -1,7 +1,11 @@
+#include <algorithm>
+#include <cstdlib>
+
 #include "util.h"
 
 #pragma ide diagnostic ignored "openmp-use-default-none"
 
+// 并行扫描度取值
 void Scan(NodeT n, const NodeT *deg, NodeT level, NodeT *curr,
           NodeT &currTail) {
   NodeT buff[BUFFER_SIZE];
@@ -30,6 +34,7 @@ void Scan(NodeT n, const NodeT *deg, NodeT level, NodeT *curr,
 #pragma omp barrier
 }
 
+// 子任务循环迭代分解
 void SubLevel(const EdgeT *nodeIndex, const NodeT *edgesSecond,
               const NodeT *curr, NodeT currTail, NodeT *deg, NodeT level,
               NodeT *next, NodeT &nextTail) {
@@ -79,6 +84,7 @@ void SubLevel(const EdgeT *nodeIndex, const NodeT *edgesSecond,
 #pragma omp barrier
 }
 
+// 求解k-core的主流程
 void KCore(const EdgeT *nodeIndex, const NodeT *edgesSecond, NodeT nodesNum,
            NodeT *deg) {
   auto *curr = (NodeT *)malloc(nodesNum * sizeof(NodeT));
@@ -86,9 +92,7 @@ void KCore(const EdgeT *nodeIndex, const NodeT *edgesSecond, NodeT nodesNum,
   NodeT currTail = 0;
   NodeT nextTail = 0;
 
-#ifndef SERIAL
 #pragma omp parallel
-#endif
   {
     NodeT todo = nodesNum;
     NodeT level = 0;

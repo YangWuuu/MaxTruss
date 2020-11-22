@@ -1,3 +1,5 @@
+#include <omp.h>
+
 #include <string>
 
 #include "clock.h"
@@ -33,7 +35,11 @@ void Log(int argc, char *argv[]) {
 int main(int argc, char *argv[]) {
   Log(argc, argv);
 
-  std::string filePath = GetFileName(argc, argv);
+  if (argc < 3) {
+    fprintf(stderr, "usage: %s -f graph_name\n", argv[0]);
+    exit(-1);
+  }
+  std::string filePath = std::string(argv[2]);
 
   Clock allClock("All");
   log_info(allClock.Start());
@@ -45,17 +51,18 @@ int main(int argc, char *argv[]) {
 
   // TODO Graph中内存需要统一全局分配
   Graph graph(edges, edgesNum);
-
+  // 通过Core分解获取最大的层次信息
   NodeT maxCore = graph.GetMaxCore();
 
+  // 得到kmax上界
   NodeT kMaxUpperBound = maxCore + 2;
+  // 得到kmax下界
   NodeT kMaxLowerBound = graph.KMaxTruss(kMaxUpperBound, 0u);
   log_info("UpperBound: %u LowerBound: %u", kMaxUpperBound, kMaxLowerBound);
 
   if (kMaxLowerBound < kMaxUpperBound) {
+    // 得到kmax真实值
     NodeT kMax = graph.KMaxTruss(kMaxLowerBound, kMaxLowerBound - 2);
-    //    NodeT kMax = graph.KMaxTruss(kMaxLowerBound, 0);
-    //    NodeT kMax = graph.KMaxTruss(0, 0);
     log_info("LowerBound: %u kMax: %u", kMaxLowerBound, kMax);
     if (kMax < kMaxLowerBound) {
       log_error("it is error");

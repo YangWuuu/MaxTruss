@@ -1,3 +1,7 @@
+#include <algorithm>
+#include <cstdlib>
+
+#include "log.h"
 #include "util.h"
 
 #pragma ide diagnostic ignored "openmp-use-default-none"
@@ -100,7 +104,6 @@ void SubLevel(const EdgeT *nodeIndex, const NodeT *edgesSecond,
 
 #pragma omp for schedule(dynamic, 8)
   for (EdgeT i = 0; i < currTail; i++) {
-    // process edge <u,v>
     EdgeT e1 = curr[i];
     NodeT u = FIRST(halfEdges[e1]);
     NodeT v = SECOND(halfEdges[e1]);
@@ -165,9 +168,7 @@ void KTruss(const EdgeT *nodeIndex, const NodeT *edgesSecond,
   auto *next = (EdgeT *)calloc(halfEdgesNum, sizeof(EdgeT));
   auto *inNext = (bool *)calloc(halfEdgesNum, sizeof(bool));
 
-#ifndef SERIAL
 #pragma omp parallel
-#endif
   {
     NodeT level = startLevel;
     EdgeT todo = halfEdgesNum;
@@ -198,9 +199,7 @@ void KTruss(const EdgeT *nodeIndex, const NodeT *edgesSecond,
       }
       ++level;
     } else {
-#ifndef SERIAL
 #pragma omp for reduction(min : minLevel)
-#endif
       for (EdgeT i = 0; i < halfEdgesNum; i++) {
         if (edgesSup[i] < minLevel) {
           minLevel = edgesSup[i];
@@ -245,6 +244,7 @@ NodeT DisplayStats(const NodeT *edgeSup, EdgeT halfEdgesNum, NodeT minK) {
   NodeT minSup = std::numeric_limits<NodeT>::max();
   NodeT maxSup = 0;
 
+#pragma omp parallel for reduction(max : maxSup) reduction(min : minSup)
   for (EdgeT i = 0; i < halfEdgesNum; i++) {
     if (minSup > edgeSup[i]) {
       minSup = edgeSup[i];
@@ -256,22 +256,13 @@ NodeT DisplayStats(const NodeT *edgeSup, EdgeT halfEdgesNum, NodeT minK) {
 
   EdgeT numEdgesWithMinSup = 0;
   EdgeT numEdgesWithMaxSup = 0;
+#pragma omp parallel for reduction(+ : numEdgesWithMinSup) reduction(+ : numEdgesWithMaxSup)
   for (EdgeT i = 0; i < halfEdgesNum; i++) {
     if (edgeSup[i] == minSup) {
       numEdgesWithMinSup++;
     }
     if (edgeSup[i] == maxSup) {
       numEdgesWithMaxSup++;
-    }
-  }
-
-  std::vector<uint64_t> sups(maxSup + 1);
-  for (EdgeT i = 0; i < halfEdgesNum; i++) {
-    sups[edgeSup[i]]++;
-  }
-  for (NodeT i = 0; i < maxSup + 1; i++) {
-    if (sups[i] > 0) {
-      log_debug("k: %d  edges: %lu", i + 2, sups[i]);
     }
   }
 
