@@ -18,10 +18,10 @@ class Graph {
 
   ~Graph() {}
 
-  NodeT GetMaxK();
+  NodeT GetMaxCore();
 
   // 获取max-k-truss
-  NodeT MaxKTruss(NodeT startK);
+  NodeT KMaxTruss(NodeT startK, NodeT startLevel);
 
  private:
   // 图的预处理
@@ -71,7 +71,7 @@ class Graph {
   // 边编号
   EdgeT *edgesId_{nullptr};
   // 支持边
-  EdgeT *edgesSup_{nullptr};
+  NodeT *edgesSup_{nullptr};
 };
 
 // 计算节点的度
@@ -93,10 +93,10 @@ void GetEdgeSup(const uint64_t *halfEdges, EdgeT halfEdgesNum,
 // 求解k-truss的主流程
 void KTruss(const EdgeT *nodeIndex, const NodeT *edgesSecond,
             const EdgeT *edgesId, const uint64_t *halfEdges, EdgeT halfEdgesNum,
-            EdgeT *edgesSup);
+            NodeT *edgesSup, NodeT startLevel);
 
 // 获取各层次truss的边的数量
-NodeT displayStats(const EdgeT *EdgeSupport, EdgeT halfEdgesNum, NodeT minK);
+NodeT DisplayStats(const NodeT *edgeSup, EdgeT halfEdgesNum, NodeT minK);
 
 void KCore(const EdgeT *nodeIndex, const NodeT *edgesSecond, NodeT nodesNum,
            NodeT *deg);

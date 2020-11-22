@@ -18,8 +18,8 @@ using NodeT = uint32_t;
 using EdgeT = uint32_t;
 
 // Size of cache line
-const EdgeT BUFFER_SIZE_BYTES = 2048;
-const EdgeT BUFFER_SIZE = BUFFER_SIZE_BYTES / sizeof(NodeT);
+const NodeT BUFFER_SIZE_BYTES = 2048;
+const NodeT BUFFER_SIZE = BUFFER_SIZE_BYTES / sizeof(NodeT);
 
 const uint64_t FILE_SPLIT_NUM = 8u;
 const uint64_t SEARCH_LINE_NUM = 1000u;
@@ -32,7 +32,6 @@ inline std::string GetFileName(int argc, char **argv) {
   }
   return std::string(argv[2]);
 }
-
 
 /*
  * InclusivePrefixSumOMP: General Case Inclusive Prefix Sum
@@ -128,10 +127,10 @@ uint32_t GallopingSearch(const T *array, const uint32_t offset_beg,
       jump_idx <<= 1u;
     } else {
       return array[peek_idx] == val
-          ? peek_idx
-          : BranchFreeBinarySearch(array,
-                                   (jump_idx >> 1u) + offset_beg + 1,
-                                   peek_idx + 1, val);
+                 ? peek_idx
+                 : BranchFreeBinarySearch(array,
+                                          (jump_idx >> 1u) + offset_beg + 1,
+                                          peek_idx + 1, val);
     }
   }
 }

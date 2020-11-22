@@ -43,33 +43,23 @@ int main(int argc, char *argv[]) {
   ReadFile readFile(filePath);
   uint64_t edgesNum = readFile.ConstructEdges(edges);
 
-  // 求解max-k-truss
-  Graph graph(edges, edgesNum);
   // TODO Graph中内存需要统一全局分配
-  NodeT maxK = graph.GetMaxK();
+  Graph graph(edges, edgesNum);
 
-  NodeT startK = maxK - 1;
+  NodeT maxCore = graph.GetMaxCore();
 
-  while (true) {
-    NodeT possibleKMax1 = graph.MaxKTruss(startK);
-    log_info("startK: %u possibleKMax1: %u", startK, possibleKMax1);
-    if (possibleKMax1 >= startK) {
-      break;
-    }
+  NodeT kMaxUpperBound = maxCore + 2;
+  NodeT kMaxLowerBound = graph.KMaxTruss(kMaxUpperBound, 0u);
+  log_info("UpperBound: %u LowerBound: %u", kMaxUpperBound, kMaxLowerBound);
 
-    startK = possibleKMax1;
-    NodeT possibleKMax2 = graph.MaxKTruss(startK);
-    log_info("maxK: %u possibleKMax2: %u", startK, possibleKMax2);
-    if (possibleKMax2 >= startK) {
-      break;
-    }
-
-    // can not go here
-    startK = 0;
-    NodeT possibleKMax3 = graph.MaxKTruss(startK);
-    log_info("maxK: %u possibleKMax3: %u", startK, possibleKMax3);
-    if (possibleKMax3 >= startK) {
-      break;
+  if (kMaxLowerBound < kMaxUpperBound) {
+    NodeT kMax = graph.KMaxTruss(kMaxLowerBound, kMaxLowerBound - 2);
+    //    NodeT kMax = graph.KMaxTruss(kMaxLowerBound, 0);
+    //    NodeT kMax = graph.KMaxTruss(0, 0);
+    log_info("LowerBound: %u kMax: %u", kMaxLowerBound, kMax);
+    if (kMax < kMaxLowerBound) {
+      log_error("it is error");
+      exit(-1);
     }
   }
 

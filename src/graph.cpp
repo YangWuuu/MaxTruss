@@ -6,7 +6,7 @@
 
 #pragma ide diagnostic ignored "openmp-use-default-none"
 
-NodeT Graph::GetMaxK() {
+NodeT Graph::GetMaxCore() {
   log_info(coreClock_.Start());
 
   rawDeg_ = (NodeT *)calloc(rawNodesNum_, sizeof(NodeT));
@@ -32,21 +32,13 @@ NodeT Graph::GetMaxK() {
   for (NodeT i = 0; i < rawNodesNum_; i++) {
     maxCoreNum = std::max(maxCoreNum, rawCore_[i]);
   }
-  ++maxCoreNum;
-  auto *histogram = (NodeT *)calloc(maxCoreNum, sizeof(NodeT));
-#pragma omp parallel for
-  for (NodeT i = 0; i < rawNodesNum_; i++) {
-    NodeT coreVal = rawCore_[i];
-    __sync_fetch_and_add(&histogram[coreVal], 1);
-  }
-  log_info(coreClock_.Count("histogram"));
 
-  log_info(coreClock_.Count("maxK: %u", maxCoreNum - 1));
-  return maxCoreNum - 1;
+  log_info(coreClock_.Count("maxK: %u", maxCoreNum));
+  return maxCoreNum;
 }
 
 // 获取max-k-truss主流程
-NodeT Graph::MaxKTruss(NodeT startK) {
+NodeT Graph::KMaxTruss(NodeT startK, NodeT startLevel) {
   startK_ = startK;
 
   // 预处理
@@ -61,11 +53,11 @@ NodeT Graph::MaxKTruss(NodeT startK) {
   // 求解k-truss
   log_info(trussClock_.Start());
   ::KTruss(nodeIndex_, edgesSecond_, edgesId_, halfEdges_, halfEdgesNum_,
-           edgesSup_);
+           edgesSup_, startLevel);
   log_info(trussClock_.Count("KTruss"));
 
   // 打印信息
-  NodeT possibleKMax = displayStats(edgesSup_, halfEdgesNum_, startK_);
+  NodeT possibleKMax = DisplayStats(edgesSup_, halfEdgesNum_, startK_);
 
   return possibleKMax;
 }
@@ -121,8 +113,8 @@ void Graph::RemoveEdges() {
   // TODO parallel
   edgesNum_ = std::copy_if(rawEdges_, rawEdges_ + rawEdgesNum_, edges_,
                            [&](const uint64_t edge) {
-                             return rawCore_[FIRST(edge)] > startK_ &&
-                                    rawCore_[SECOND(edge)] > startK_;
+                             return rawCore_[FIRST(edge)] >= (startK_ - 2) &&
+                                    rawCore_[SECOND(edge)] >= (startK_ - 2);
                            }) -
               edges_;
 
@@ -132,7 +124,7 @@ void Graph::RemoveEdges() {
 // 三角形计数
 void Graph::TriCount() {
   log_info(triCountClock_.Start());
-  edgesSup_ = (EdgeT *)calloc(halfEdgesNum_, sizeof(EdgeT));
+  edgesSup_ = (NodeT *)calloc(halfEdgesNum_, sizeof(NodeT));
   GetEdgeSup(halfEdges_, halfEdgesNum_, halfEdgesFirst_, halfEdgesSecond_,
              halfDeg_, nodesNum_, halfNodeIndex_, edgesSup_);
   log_info(triCountClock_.Count("Count"));

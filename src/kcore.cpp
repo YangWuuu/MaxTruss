@@ -90,7 +90,6 @@ void KCore(const EdgeT *nodeIndex, const NodeT *edgesSecond, NodeT nodesNum,
 #pragma omp parallel
 #endif
   {
-    int tid = omp_get_thread_num();
     NodeT todo = nodesNum;
     NodeT level = 0;
 
@@ -100,10 +99,9 @@ void KCore(const EdgeT *nodeIndex, const NodeT *edgesSecond, NodeT nodesNum,
         todo = todo - currTail;
         SubLevel(nodeIndex, edgesSecond, curr, currTail, deg, level, next,
                  nextTail);
-        if (tid == 0) {
-          NodeT *tempCurr = curr;
-          curr = next;
-          next = tempCurr;
+#pragma omp single
+        {
+          std::swap(curr, next);
 
           currTail = nextTail;
           nextTail = 0;

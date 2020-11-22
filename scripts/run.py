@@ -15,6 +15,9 @@ data_and_results = [
     ["soc-LiveJournal.tsv", "kmax = 362, Edges in kmax-truss = 72913."],
     ["s18.e16.tsv", "kmax = 164, Edges in kmax-truss = 226780."],
     ["s19.e16.tsv", "kmax = 226, Edges in kmax-truss = 332802."],
+    ["complete_graph.tsv", "kmax = 3, Edges in kmax-truss = 3."],
+    ["tricount_0.tsv", "kmax = 2, Edges in kmax-truss = 4."],
+    ["tricount_1.tsv", "kmax = 3, Edges in kmax-truss = 3."],
 ]
 
 
@@ -61,12 +64,18 @@ def kron_gen():
         if not os.path.exists(src_path):
             continue
         shutil.move(src_path, dst_path)
+    for d, _ in data_and_results:
+        src_path = os.path.join("examples", d)
+        dst_path = os.path.join(data_folder, d)
+        if not os.path.exists(src_path):
+            continue
+        shutil.move(src_path, dst_path)
 
 
 def time_analysis(cmd, data_path, result, count=1, para=""):
     t = list()
     for i in range(count):
-        args = ["time", os.path.join(project_folder, cmd), "-f", data_path, para]
+        args = [os.path.join(project_folder, cmd), "-f", data_path, para]
         start = time.time()
         p = subprocess.Popen(" ".join(args), shell=True,
                              stdout=subprocess.PIPE,
@@ -74,7 +83,8 @@ def time_analysis(cmd, data_path, result, count=1, para=""):
         stdout_output, stderr_output = p.communicate()
         cost_time = (time.time() - start) * 1000
         t.append(cost_time)
-        line = stdout_output.decode().split("\n")[0]
+        # line = stdout_output.decode().split("\n")[0]
+        line = stdout_output.decode().strip()
         if line != result:
             print("result is wrong!!!")
             print("{} {} {} {}".format(cmd, data_path, line, result))
@@ -106,8 +116,8 @@ def main():
             if not os.path.exists(data_file):
                 print("file is not exist: {}".format(data_file))
                 continue
-            min_t, _, _, mid_t = time_analysis(cmd[0], data_file, d[1], cmd[1])
-            print("{:^20} {:^30} {:.0f}ms {:.0f}ms".format(cmd[0], d[0], min_t, mid_t))
+            min_t, max_t, _, mid_t = time_analysis(cmd[0], data_file, d[1], cmd[1])
+            print("{:^20} {:^30} {:.0f}ms {:.0f}ms {:.0f}ms".format(cmd[0], d[0], min_t, mid_t, max_t))
     print("run cost: {}s".format(int(time.time() - start)))
 
 
