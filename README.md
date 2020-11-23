@@ -4,7 +4,7 @@
 
 ## 代码编译说明
 
-* 方法一：在代码目录下运行`make`命令，当前目录得到`kmax_truss`可执行程序。
+* 方法一：在代码目录下运行`make`命令，当前目录得到`kmax_truss_omp`可执行程序。
 
 * 方法二：
 
@@ -15,14 +15,14 @@ cmake -DCMAKE_BUILD_TYPE=Release ..
 make
 ```
 
-在项目根目录下的bin目录内得到`kmax_truss`可执行程序
+在项目根目录下的bin目录内得到`kmax_truss_omp`可执行程序
 
 ## 运行使用说明
 
 运行命令：
 
 ```shell script
-./kmax_truss -f ***.tsv(图数据文件路径)
+./kmax_truss_omp -f ***.tsv(图数据文件路径)
 ```
 
 标准输出为：
