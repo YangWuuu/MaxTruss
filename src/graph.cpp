@@ -18,7 +18,7 @@ NodeT Graph::GetMaxCore() {
   ::NodeIndex(rawDeg_, rawNodesNum_, rawNodeIndex_);
   log_info(coreClock_.Count("NodeIndex"));
 
-  rawCore_ = (NodeT *)malloc(rawNodesNum_ * sizeof(NodeT));
+  rawCore_ = (NodeT *)myMalloc(rawNodesNum_ * sizeof(NodeT));
   // TODO parallel
   memcpy(rawCore_, rawDeg_, rawNodesNum_ * sizeof(NodeT));
   log_info(coreClock_.Count("rawCore_"));
@@ -95,7 +95,7 @@ void Graph::Preprocess() {
   }
 
   halfEdgesNum_ = edgesNum_ / 2;
-  halfEdges_ = (uint64_t *)malloc(halfEdgesNum_ * sizeof(uint64_t));
+  halfEdges_ = (uint64_t *)myMalloc(halfEdgesNum_ * sizeof(uint64_t));
   // TODO parallel
   std::copy_if(edges_, edges_ + edgesNum_, halfEdges_,
                [](const uint64_t &edge) { return FIRST(edge) < SECOND(edge); });
@@ -112,7 +112,7 @@ void Graph::Preprocess() {
 
 // 图的裁剪
 void Graph::RemoveEdges() {
-  edges_ = (uint64_t *)malloc(rawEdgesNum_ * sizeof(uint64_t));
+  edges_ = (uint64_t *)myMalloc(rawEdgesNum_ * sizeof(uint64_t));
   // TODO parallel
   edgesNum_ = std::copy_if(rawEdges_, rawEdges_ + rawEdgesNum_, edges_,
                            [&](const uint64_t edge) {

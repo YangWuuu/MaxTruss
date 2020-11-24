@@ -24,8 +24,8 @@ void CalDeg(const uint64_t *edges, EdgeT edgesNum, NodeT nodesNum,
 // 边的解压缩
 void Unzip(const uint64_t *edges, EdgeT edgesNum, NodeT *&edgesFirst,
            NodeT *&edgesSecond) {
-  edgesFirst = (NodeT *)malloc(edgesNum * sizeof(NodeT));
-  edgesSecond = (NodeT *)malloc(edgesNum * sizeof(NodeT));
+  edgesFirst = (NodeT *)myMalloc(edgesNum * sizeof(NodeT));
+  edgesSecond = (NodeT *)myMalloc(edgesNum * sizeof(NodeT));
 
 #pragma omp parallel for
   for (EdgeT i = 0; i < edgesNum; i++) {
@@ -46,7 +46,7 @@ void NodeIndex(const NodeT *deg, NodeT nodesNum, EdgeT *&nodeIndex) {
 // 边编号
 void GetEdgesId(const uint64_t *edges, EdgeT edgesNum, EdgeT *&edgesId,
                 const EdgeT *halfNodeIndex, const NodeT *halfEdgesSecond) {
-  edgesId = (EdgeT *)malloc(edgesNum * sizeof(EdgeT));
+  edgesId = (EdgeT *)myMalloc(edgesNum * sizeof(EdgeT));
 
 #pragma omp parallel for schedule(dynamic, 1024)
   for (EdgeT i = 0u; i < edgesNum; i++) {

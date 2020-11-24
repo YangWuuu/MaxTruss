@@ -13,11 +13,11 @@ data_and_results = [
     ["s19.e16.rmat.edgelist.tsv", "kmax = 223, Edges in kmax-truss = 334934."],
     ["cit-Patents.tsv", "kmax = 36, Edges in kmax-truss = 2625."],
     ["soc-LiveJournal.tsv", "kmax = 362, Edges in kmax-truss = 72913."],
-    # ["s18.e16.tsv", "kmax = 164, Edges in kmax-truss = 226780."],
-    # ["s19.e16.tsv", "kmax = 226, Edges in kmax-truss = 332802."],
-    # ["complete_graph.tsv", "kmax = 3, Edges in kmax-truss = 3."],
-    # ["tricount_0.tsv", "kmax = 2, Edges in kmax-truss = 4."],
-    # ["tricount_1.tsv", "kmax = 3, Edges in kmax-truss = 3."],
+    ["s18.e16.tsv", "kmax = 164, Edges in kmax-truss = 226780."],
+    ["s19.e16.tsv", "kmax = 226, Edges in kmax-truss = 332802."],
+    ["complete_graph.tsv", "kmax = 3, Edges in kmax-truss = 3."],
+    ["tricount_0.tsv", "kmax = 2, Edges in kmax-truss = 4."],
+    ["tricount_1.tsv", "kmax = 3, Edges in kmax-truss = 3."],
 ]
 
 
@@ -83,7 +83,6 @@ def time_analysis(cmd, data_path, result, count=1, para=""):
         stdout_output, stderr_output = p.communicate()
         cost_time = (time.time() - start) * 1000
         t.append(cost_time)
-        # line = stdout_output.decode().split("\n")[0]
         line = stdout_output.decode().strip()
         if line != result:
             print("result is wrong!!!")
@@ -97,7 +96,7 @@ def time_analysis(cmd, data_path, result, count=1, para=""):
 def main():
     cmds = [
         ["kmax_truss_omp", 5],
-        ["kmax_truss_cuda", 5],
+        # ["kmax_truss_cuda", 5],
         ["kmax_truss_serial", 3]
     ]
     print("project_folder: {}".format(project_folder))

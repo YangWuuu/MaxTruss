@@ -13,5 +13,6 @@ using EdgeT = uint32_t;
 const NodeT BUFFER_SIZE_BYTES = 2048;
 const NodeT BUFFER_SIZE = BUFFER_SIZE_BYTES / sizeof(NodeT);
 
-const uint64_t FILE_SPLIT_NUM = 8u;
 const uint64_t SEARCH_LINE_NUM = 1000u;
+
+void *myMalloc(uint64_t len);

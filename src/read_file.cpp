@@ -24,9 +24,9 @@ uint64_t ReadFile::ConstructEdges(uint64_t *&edges) {
   log_info(readFileClock_.Count("approximateLineNum: %lu", lineNum));
 #endif
 
-  edges = (uint64_t *)malloc((lineNum + 1) * sizeof(uint64_t));
+  edges = (uint64_t *)myMalloc((lineNum + 1) * sizeof(uint64_t));
   log_info(readFileClock_.Count(
-      "edges malloc %.2fMB", (double)lineNum * sizeof(uint64_t) / 1024 / 1024));
+      "edges: %.2fMB", (double)lineNum * sizeof(uint64_t) / 1024 / 1024));
 
   uint64_t edgesNum = GetEdges(edges);
   log_info(
@@ -44,7 +44,7 @@ uint64_t ReadFile::GetLineNum() {
 
   uint64_t len = std::min(len_, SEARCH_LINE_NUM * (10 * 2 + 4));
   uint64_t lineNum = ::GetLineNum(byte_, len);
-  uint64_t approximateLineNum = std::ceil(len_ * lineNum / len);
+  uint64_t approximateLineNum = std::ceil(1.2 * len_ * lineNum / len);
 
   return approximateLineNum;
 }
@@ -55,17 +55,21 @@ uint64_t ReadFile::GetEdges(uint64_t *edges) {
 #ifdef SERIAL
   edgesNum = ::GetEdges(edges, byte_, len_);
 #else
-  std::vector<std::thread> threads(FILE_SPLIT_NUM);
-  for (uint64_t i = 0; i < FILE_SPLIT_NUM; i++) {
-    uint64_t start = len_ * i / FILE_SPLIT_NUM;
-    uint64_t end = len_ * (i + 1) / FILE_SPLIT_NUM;
+  uint64_t fileSplitNum = 8u;
+  if (len_ < 1000u) {
+    fileSplitNum = 1u;
+  }
+  std::vector<std::thread> threads(fileSplitNum);
+  for (uint64_t i = 0; i < fileSplitNum; i++) {
+    uint64_t start = len_ * i / fileSplitNum;
+    uint64_t end = len_ * (i + 1) / fileSplitNum;
     if (i != 0) {
       while (*(byte_ + start) != '\n') {
         ++start;
       }
       ++start;
     }
-    if (i + 1 != FILE_SPLIT_NUM) {
+    if (i + 1 != fileSplitNum) {
       while (*(byte_ + end) != '\n') {
         ++end;
       }
@@ -88,6 +92,9 @@ uint64_t GetLineNum(const char *byte, uint64_t len) {
     log_error("byte_ is nullptr");
     exit(-1);
   }
+  while (*(byte + len - 1) == '\n' || *(byte + len - 1) == '\r') {
+    --len;
+  }
   uint64_t lineNum = 0;
 
 #pragma omp parallel for reduction(+ : lineNum)
@@ -103,21 +110,25 @@ uint64_t GetLineNum(const char *byte, uint64_t len) {
 }
 
 uint64_t GetEdges(uint64_t *edges, const char *byte, uint64_t len) {
+  while (*(byte + len - 1) == '\n' || *(byte + len - 1) == '\r') {
+    --len;
+  }
+
   uint64_t pos = 0;
   uint64_t edgesNum = 0;
   while (pos < len) {
     uint32_t first = 0;
-    while (*(byte + pos) != '\t') {
+    while (*(byte + pos) >= '0' && *(byte + pos) <= '9') {
       first = 10u * first + (*(byte + pos) - '0');
       ++pos;
     }
     ++pos;
     uint32_t second = 0;
-    while (*(byte + pos) != '\t') {
+    while (*(byte + pos) >= '0' && *(byte + pos) <= '9') {
       second = 10u * second + (*(byte + pos) - '0');
       ++pos;
     }
-    while (*(byte + pos) != '\n') {
+    while (pos < len && *(byte + pos) != '\n') {
       ++pos;
     }
     ++pos;

@@ -87,8 +87,8 @@ void SubLevel(const EdgeT *nodeIndex, const NodeT *edgesSecond,
 // 求解k-core的主流程
 void KCore(const EdgeT *nodeIndex, const NodeT *edgesSecond, NodeT nodesNum,
            NodeT *deg) {
-  auto *curr = (NodeT *)malloc(nodesNum * sizeof(NodeT));
-  auto *next = (NodeT *)malloc(nodesNum * sizeof(NodeT));
+  auto *curr = (NodeT *)myMalloc(nodesNum * sizeof(NodeT));
+  auto *next = (NodeT *)myMalloc(nodesNum * sizeof(NodeT));
   NodeT currTail = 0;
   NodeT nextTail = 0;
 
@@ -116,7 +116,4 @@ void KCore(const EdgeT *nodeIndex, const NodeT *edgesSecond, NodeT nodesNum,
 #pragma omp barrier
     }
   }
-
-  free(curr);
-  free(next);
 }
