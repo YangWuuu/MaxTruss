@@ -7,8 +7,7 @@
 #pragma ide diagnostic ignored "openmp-use-default-none"
 
 // 并行扫描支持边是否与truss层次相同
-void Scan(EdgeT numEdges, const NodeT *edgesSup, NodeT level, EdgeT *curr,
-          EdgeT &currTail, bool *inCurr) {
+void Scan(EdgeT numEdges, const NodeT *edgesSup, NodeT level, EdgeT *curr, EdgeT &currTail, bool *inCurr) {
   NodeT buff[BUFFER_SIZE];
   EdgeT index = 0;
 
@@ -39,8 +38,7 @@ void Scan(EdgeT numEdges, const NodeT *edgesSup, NodeT level, EdgeT *curr,
 }
 
 // 并行扫描支持边层次小于指定层次
-void ScanLessThanLevel(EdgeT numEdges, const NodeT *edgesSup, NodeT level,
-                       EdgeT *curr, EdgeT &currTail, bool *inCurr) {
+void ScanLessThanLevel(EdgeT numEdges, const NodeT *edgesSup, NodeT level, EdgeT *curr, EdgeT &currTail, bool *inCurr) {
   NodeT buff[BUFFER_SIZE];
   EdgeT index = 0;
 
@@ -71,8 +69,8 @@ void ScanLessThanLevel(EdgeT numEdges, const NodeT *edgesSup, NodeT level,
 }
 
 // 更新支持边的数值
-void UpdateSup(EdgeT e, NodeT *edgesSup, NodeT level, NodeT *buff, EdgeT &index,
-               EdgeT *next, bool *inNext, EdgeT &nextTail) {
+void UpdateSup(EdgeT e, NodeT *edgesSup, NodeT level, NodeT *buff, EdgeT &index, EdgeT *next, bool *inNext,
+               EdgeT &nextTail) {
   NodeT supE = __sync_fetch_and_sub(&edgesSup[e], 1);
 
   if (supE == (level + 1)) {
@@ -87,18 +85,15 @@ void UpdateSup(EdgeT e, NodeT *edgesSup, NodeT level, NodeT *buff, EdgeT &index,
 
   if (index >= BUFFER_SIZE) {
     EdgeT tempIdx = __sync_fetch_and_add(&nextTail, BUFFER_SIZE);
-    for (EdgeT bufIdx = 0; bufIdx < BUFFER_SIZE; bufIdx++)
-      next[tempIdx + bufIdx] = buff[bufIdx];
+    for (EdgeT bufIdx = 0; bufIdx < BUFFER_SIZE; bufIdx++) next[tempIdx + bufIdx] = buff[bufIdx];
     index = 0;
   }
 }
 
 // 子任务循环迭代消减truss
-void SubLevel(const EdgeT *nodeIndex, const NodeT *edgesSecond,
-              const EdgeT *curr, bool *inCurr, EdgeT currTail, NodeT *edgesSup,
-              NodeT level, EdgeT *next, bool *inNext, EdgeT &nextTail,
-              bool *processed, const EdgeT *edgesId,
-              const uint64_t *halfEdges) {
+void SubLevel(const EdgeT *nodeIndex, const NodeT *adj, const EdgeT *curr, bool *inCurr, EdgeT currTail,
+              NodeT *edgesSup, NodeT level, EdgeT *next, bool *inNext, EdgeT &nextTail, bool *processed,
+              const EdgeT *edgesId, const uint64_t *halfEdges) {
   NodeT buff[BUFFER_SIZE];
   EdgeT index = 0;
 
@@ -111,9 +106,9 @@ void SubLevel(const EdgeT *nodeIndex, const NodeT *edgesSecond,
     EdgeT uStart = nodeIndex[u], uEnd = nodeIndex[u + 1];
     EdgeT vStart = nodeIndex[v], vEnd = nodeIndex[v + 1];
     while (uStart < uEnd && vStart < vEnd) {
-      if (edgesSecond[uStart] < edgesSecond[vStart]) {
+      if (adj[uStart] < adj[vStart]) {
         ++uStart;
-      } else if (edgesSecond[uStart] > edgesSecond[vStart]) {
+      } else if (adj[uStart] > adj[vStart]) {
         ++vStart;
       } else {
         EdgeT e2 = edgesId[uStart];
@@ -156,17 +151,16 @@ void SubLevel(const EdgeT *nodeIndex, const NodeT *edgesSecond,
 }
 
 // 求解k-truss的主流程
-void KTruss(const EdgeT *nodeIndex, const NodeT *edgesSecond,
-            const EdgeT *edgesId, const uint64_t *halfEdges, EdgeT halfEdgesNum,
-            NodeT *edgesSup, NodeT startLevel) {
+void KTruss(const EdgeT *nodeIndex, const NodeT *adj, const EdgeT *edgesId, const uint64_t *halfEdges,
+            EdgeT halfEdgesNum, NodeT *edgesSup, NodeT startLevel) {
   EdgeT currTail = 0;
   EdgeT nextTail = 0;
   NodeT minLevel = halfEdgesNum;
-  auto *processed = (bool *)calloc(halfEdgesNum, sizeof(bool));
-  auto *curr = (EdgeT *)calloc(halfEdgesNum, sizeof(EdgeT));
-  auto *inCurr = (bool *)calloc(halfEdgesNum, sizeof(bool));
-  auto *next = (EdgeT *)calloc(halfEdgesNum, sizeof(EdgeT));
-  auto *inNext = (bool *)calloc(halfEdgesNum, sizeof(bool));
+  auto *processed = (bool *)MyMalloc(halfEdgesNum * sizeof(bool));
+  auto *curr = (EdgeT *)MyMalloc(halfEdgesNum * sizeof(EdgeT));
+  auto *inCurr = (bool *)MyMalloc(halfEdgesNum * sizeof(bool));
+  auto *next = (EdgeT *)MyMalloc(halfEdgesNum * sizeof(EdgeT));
+  auto *inNext = (bool *)MyMalloc(halfEdgesNum * sizeof(bool));
 
 #pragma omp parallel
   {
@@ -176,14 +170,11 @@ void KTruss(const EdgeT *nodeIndex, const NodeT *edgesSecond,
       --level;
       ScanLessThanLevel(halfEdgesNum, edgesSup, level, curr, currTail, inCurr);
 #pragma omp single
-      {
-        log_debug("level: %u currTail: %u restEdges: %u", level, currTail,
-                  todo);
-      }
+      { log_debug("level: %u currTail: %u restEdges: %u", level, currTail, todo); }
       while (currTail > 0) {
         todo = todo - currTail;
-        SubLevel(nodeIndex, edgesSecond, curr, inCurr, currTail, edgesSup,
-                 level, next, inNext, nextTail, processed, edgesId, halfEdges);
+        SubLevel(nodeIndex, adj, curr, inCurr, currTail, edgesSup, level, next, inNext, nextTail, processed, edgesId,
+                 halfEdges);
 #pragma omp single
         {
           std::swap(curr, next);
@@ -192,8 +183,7 @@ void KTruss(const EdgeT *nodeIndex, const NodeT *edgesSecond,
           currTail = nextTail;
           nextTail = 0;
 
-          log_debug("level: %u currTail: %u restEdges: %u", level, currTail,
-                    todo);
+          log_debug("level: %u currTail: %u restEdges: %u", level, currTail, todo);
         }
 #pragma omp barrier
       }
@@ -210,16 +200,13 @@ void KTruss(const EdgeT *nodeIndex, const NodeT *edgesSecond,
     while (todo > 0) {
       Scan(halfEdgesNum, edgesSup, level, curr, currTail, inCurr);
 #pragma omp single
-      {
-        log_debug("level: %u currTail: %u restEdges: %u", level, currTail,
-                  todo);
-      }
+      { log_debug("level: %u currTail: %u restEdges: %u", level, currTail, todo); }
 #pragma omp barrier
 
       while (currTail > 0) {
         todo = todo - currTail;
-        SubLevel(nodeIndex, edgesSecond, curr, inCurr, currTail, edgesSup,
-                 level, next, inNext, nextTail, processed, edgesId, halfEdges);
+        SubLevel(nodeIndex, adj, curr, inCurr, currTail, edgesSup, level, next, inNext, nextTail, processed, edgesId,
+                 halfEdges);
 #pragma omp single
         {
           std::swap(curr, next);
@@ -228,8 +215,7 @@ void KTruss(const EdgeT *nodeIndex, const NodeT *edgesSecond,
           currTail = nextTail;
           nextTail = 0;
 
-          log_debug("level: %u currTail: %u restEdges: %u", level, currTail,
-                    todo);
+          log_debug("level: %u currTail: %u restEdges: %u", level, currTail, todo);
         }
 #pragma omp barrier
       }
@@ -237,6 +223,12 @@ void KTruss(const EdgeT *nodeIndex, const NodeT *edgesSecond,
 #pragma omp barrier
     }
   }
+
+  MyFree((void *&)processed, halfEdgesNum * sizeof(bool));
+  MyFree((void *&)curr, halfEdgesNum * sizeof(EdgeT));
+  MyFree((void *&)inCurr, halfEdgesNum * sizeof(bool));
+  MyFree((void *&)next, halfEdgesNum * sizeof(EdgeT));
+  MyFree((void *&)inNext, halfEdgesNum * sizeof(bool));
 }
 
 // 获取各层次truss的边的数量
@@ -266,13 +258,10 @@ NodeT DisplayStats(const NodeT *edgeSup, EdgeT halfEdgesNum, NodeT minK) {
     }
   }
 
-  log_info("Min-truss: %u  Edges in Min-truss: %u", minSup + 2,
-           numEdgesWithMinSup);
-  log_info("Max-truss: %u  Edges in Max-truss: %u", maxSup + 2,
-           numEdgesWithMaxSup);
+  log_info("Min-truss: %u  Edges in Min-truss: %u", minSup + 2, numEdgesWithMinSup);
+  log_info("Max-truss: %u  Edges in Max-truss: %u", maxSup + 2, numEdgesWithMaxSup);
   if (maxSup + 2 >= minK) {
-    printf("kmax = %u, Edges in kmax-truss = %u.\n", maxSup + 2,
-           numEdgesWithMaxSup);
+    printf("kmax = %u, Edges in kmax-truss = %u.\n", maxSup + 2, numEdgesWithMaxSup);
   }
   return maxSup + 2;
 }

@@ -37,8 +37,7 @@
 enum { LOG_TRACE, LOG_DEBUG, LOG_INFO, LOG_WARN, LOG_ERROR, LOG_FATAL };
 
 #ifdef LOG_USE_COLOR
-static const char *level_colors[] = {"\x1b[94m", "\x1b[36m", "\x1b[32m",
-                                     "\x1b[33m", "\x1b[31m", "\x1b[35m"};
+static const char *level_colors[] = {"\x1b[94m", "\x1b[36m", "\x1b[32m", "\x1b[33m", "\x1b[31m", "\x1b[35m"};
 #endif
 
 typedef void (*log_LockFn)(void *udata, int lock);

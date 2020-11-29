@@ -107,45 +107,44 @@ Core分解也采用并行计算。
 ### 数据预处理
 
 ```c++
-// 计算节点的度
-void CalDeg(const uint64_t *edges, EdgeT edgesNum, NodeT nodesNum,
-            NodeT *&deg) {
-  deg = (NodeT *)calloc(nodesNum, sizeof(NodeT));
+// 构建CSR
+void ConstructCSRGraph(const uint64_t *edges, EdgeT edgesNum, EdgeT *&nodeIndex, NodeT *&adj) {
+  auto *edgesFirst = (NodeT *)MyMalloc(edgesNum * sizeof(NodeT));
+  adj = (NodeT *)MyMalloc(edgesNum * sizeof(NodeT));
 
-#pragma omp parallel for
-  for (EdgeT i = 0; i < edgesNum; i++) {
-    __sync_fetch_and_add(&deg[FIRST(edges[i])], 1);
-  }
-}
-```
+  NodeT nodesNum = FIRST(edges[edgesNum - 1]) + 1;
+  nodeIndex = (EdgeT *)MyMalloc((nodesNum + 1) * sizeof(EdgeT));
 
-```c++
-// 边的解压缩
-void Unzip(const uint64_t *edges, EdgeT edgesNum, NodeT *&edgesFirst,
-           NodeT *&edgesSecond) {
-  edgesFirst = (NodeT *)myMalloc(edgesNum * sizeof(NodeT));
-  edgesSecond = (NodeT *)myMalloc(edgesNum * sizeof(NodeT));
 #pragma omp parallel for
   for (EdgeT i = 0; i < edgesNum; i++) {
     edgesFirst[i] = FIRST(edges[i]);
-    edgesSecond[i] = SECOND(edges[i]);
+    adj[i] = SECOND(edges[i]);
   }
+
+#pragma omp parallel for
+  for (EdgeT i = 0; i <= edgesNum; i++) {
+    int64_t prev = i > 0 ? (int64_t)edgesFirst[i - 1] : -1;
+    int64_t next = i < edgesNum ? (int64_t)edgesFirst[i] : nodesNum;
+    for (int64_t j = prev + 1; j <= next; ++j) {
+      nodeIndex[j] = i;
+    }
+  }
+
+  MyFree((void *&)edgesFirst, edgesNum * sizeof(NodeT));
 }
 ```
 
 ```c++
 // 边编号
-void GetEdgesId(const uint64_t *edges, EdgeT edgesNum, EdgeT *&edgesId,
-                const EdgeT *halfNodeIndex, const NodeT *halfEdgesSecond) {
-  edgesId = (EdgeT *)myMalloc(edgesNum * sizeof(EdgeT));
+void GetEdgesId(const uint64_t *edges, EdgeT edgesNum, const EdgeT *halfNodeIndex, const NodeT *halfAdj,
+                EdgeT *&edgesId) {
+  edgesId = (EdgeT *)MyMalloc(edgesNum * sizeof(EdgeT));
 
 #pragma omp parallel for schedule(dynamic, 1024)
   for (EdgeT i = 0u; i < edgesNum; i++) {
     NodeT u = std::min(FIRST(edges[i]), SECOND(edges[i]));
     NodeT v = std::max(FIRST(edges[i]), SECOND(edges[i]));
-    edgesId[i] = std::lower_bound(halfEdgesSecond + halfNodeIndex[u],
-                                  halfEdgesSecond + halfNodeIndex[u + 1], v) -
-                 halfEdgesSecond;
+    edgesId[i] = std::lower_bound(halfAdj + halfNodeIndex[u], halfAdj + halfNodeIndex[u + 1], v) - halfAdj;
   }
 }
 ```
@@ -156,22 +155,34 @@ void GetEdgesId(const uint64_t *edges, EdgeT edgesNum, EdgeT *&edgesId,
 
 ```c++
 // 三角形计数获取支持边数量
-void GetEdgeSup(EdgeT halfEdgesNum, NodeT *&halfEdgesFirst,
-                NodeT *&halfEdgesSecond, NodeT *&halfDeg, EdgeT *&halfNodeIndex,
-                NodeT *&edgesSup) {
-  edgesSup = (NodeT *)calloc(halfEdgesNum, sizeof(NodeT));
+void GetEdgeSup(const EdgeT *halfNodeIndex, const NodeT *halfAdj, NodeT halfNodesNum, NodeT *&edgesSup) {
+  EdgeT halfEdgesNum = halfNodeIndex[halfNodesNum];
+  edgesSup = (NodeT *)MyMalloc(halfEdgesNum * sizeof(NodeT));
+
+  auto *halfEdgesFirst = (NodeT *)MyMalloc(halfEdgesNum * sizeof(NodeT));
+
+#pragma omp parallel for schedule(dynamic, 1024)
+  for (EdgeT i = 0; i < halfNodesNum; i++) {
+    for (EdgeT j = halfNodeIndex[i]; j < halfNodeIndex[i + 1]; ++j) {
+      halfEdgesFirst[j] = i;
+    }
+  }
+
 #pragma omp parallel for schedule(dynamic, 1024)
   for (EdgeT i = 0; i < halfEdgesNum; i++) {
     NodeT u = halfEdgesFirst[i];
-    NodeT v = halfEdgesSecond[i];
+    NodeT v = halfAdj[i];
+    if (v >= halfNodesNum) {
+      continue;
+    }
     EdgeT uStart = halfNodeIndex[u];
     EdgeT uEnd = halfNodeIndex[u + 1];
     EdgeT vStart = halfNodeIndex[v];
     EdgeT vEnd = halfNodeIndex[v + 1];
     while (uStart < uEnd && vStart < vEnd) {
-      if (halfEdgesSecond[uStart] < halfEdgesSecond[vStart]) {
+      if (halfAdj[uStart] < halfAdj[vStart]) {
         ++uStart;
-      } else if (halfEdgesSecond[uStart] > halfEdgesSecond[vStart]) {
+      } else if (halfAdj[uStart] > halfAdj[vStart]) {
         ++vStart;
       } else {
         __sync_fetch_and_add(&edgesSup[i], 1);
@@ -182,6 +193,8 @@ void GetEdgeSup(EdgeT halfEdgesNum, NodeT *&halfEdgesFirst,
       }
     }
   }
+
+  MyFree((void *&)halfEdgesFirst, halfEdgesNum * sizeof(NodeT));
 }
 ```
 
@@ -192,23 +205,20 @@ void GetEdgeSup(EdgeT halfEdgesNum, NodeT *&halfEdgesFirst,
 * 并行扫描度取值
 
 ```c++
-void Scan(NodeT n, const NodeT *deg, NodeT level, NodeT *curr,
-          NodeT &currTail);
+void Scan(NodeT nodesNum, const NodeT *core, NodeT level, NodeT *curr, NodeT &currTail);
 ```
 
 * 子任务循环迭代分解
 
 ```c++
-void SubLevel(const EdgeT *nodeIndex, const NodeT *edgesSecond,
-              const NodeT *curr, NodeT currTail, NodeT *deg, NodeT level,
+void SubLevel(const EdgeT *nodeIndex, const NodeT *adj, const NodeT *curr, NodeT currTail, NodeT *core, NodeT level,
               NodeT *next, NodeT &nextTail);
 ```
 
 * 求解k-core的主流程
 
 ```c++
-void KCore(const EdgeT *nodeIndex, const NodeT *edgesSecond, NodeT nodesNum,
-           NodeT *deg);
+void KCore(const EdgeT *nodeIndex, const NodeT *adj, NodeT nodesNum, NodeT *&core);
 ```
 
 ### Truss分解
@@ -218,40 +228,35 @@ void KCore(const EdgeT *nodeIndex, const NodeT *edgesSecond, NodeT nodesNum,
 * 并行扫描支持边是否与truss层次相同
 
 ```c++
-void Scan(EdgeT numEdges, const NodeT *edgesSup, NodeT level, EdgeT *curr,
-          EdgeT &currTail, bool *inCurr);
+void Scan(EdgeT numEdges, const NodeT *edgesSup, NodeT level, EdgeT *curr, EdgeT &currTail, bool *inCurr);
 ```
 
 * 并行扫描支持边层次小于指定层次
 
 ```c++
-void ScanLessThanLevel(EdgeT numEdges, const NodeT *edgesSup, NodeT level,
-                       EdgeT *curr, EdgeT &currTail, bool *inCurr);
+void ScanLessThanLevel(EdgeT numEdges, const NodeT *edgesSup, NodeT level, EdgeT *curr, EdgeT &currTail, bool *inCurr);
 ```
 
 * 更新支持边的数值
 
 ```c++
-void UpdateSup(EdgeT e, NodeT *edgesSup, NodeT level, NodeT *buff, EdgeT &index,
-               EdgeT *next, bool *inNext, EdgeT &nextTail);
+void UpdateSup(EdgeT e, NodeT *edgesSup, NodeT level, NodeT *buff, EdgeT &index, EdgeT *next, bool *inNext,
+               EdgeT &nextTail);
 ```
 
 * 子任务循环迭代消减truss
 
 ```c++
-void SubLevel(const EdgeT *nodeIndex, const NodeT *edgesSecond,
-              const EdgeT *curr, bool *inCurr, EdgeT currTail, NodeT *edgesSup,
-              NodeT level, EdgeT *next, bool *inNext, EdgeT &nextTail,
-              bool *processed, const EdgeT *edgesId,
-              const uint64_t *halfEdges);
+void SubLevel(const EdgeT *nodeIndex, const NodeT *adj, const EdgeT *curr, bool *inCurr, EdgeT currTail,
+              NodeT *edgesSup, NodeT level, EdgeT *next, bool *inNext, EdgeT &nextTail, bool *processed,
+              const EdgeT *edgesId, const uint64_t *halfEdges);
 ```
 
 * 求解k-truss的主流程
 
 ```c++
-void KTruss(const EdgeT *nodeIndex, const NodeT *edgesSecond,
-            const EdgeT *edgesId, const uint64_t *halfEdges, EdgeT halfEdgesNum,
-            NodeT *edgesSup, NodeT startLevel);
+void KTruss(const EdgeT *nodeIndex, const NodeT *adj, const EdgeT *edgesId, const uint64_t *halfEdges,
+            EdgeT halfEdgesNum, NodeT *edgesSup, NodeT startLevel);
 ```
 
 ## 实验结果与分析
@@ -291,10 +296,10 @@ cpu cores       : 4
 
 | **数据集**            | **单线程(ms)** | **多线程(ms)** |
 |:---------------------:|:-----------:|:-----------:|
-| s18.e16.rmat.edgelist | 13384       | 1983        |
-| s19.e16.rmat.edgelist | 28888       | 4022        |
-| cit-Patents           | 2500        | 602         |
-| soc-LiveJournal       | 6582        | 1482        |
+| s18.e16.rmat.edgelist | 12499       | 1878        |
+| s19.e16.rmat.edgelist | 27183       | 3838        |
+| cit-Patents           | 2179        | 515         |
+| soc-LiveJournal       | 5658        | 1273        |
 
 ## 程序代码模块说明
 

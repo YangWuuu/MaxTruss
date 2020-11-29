@@ -12,8 +12,7 @@
 
 class ReadFile {
  public:
-  explicit ReadFile(const std::string &filePath)
-      : filePath_(filePath), readFileClock_("ReadFile") {}
+  explicit ReadFile(const std::string &filePath) : filePath_(filePath), readFileClock_("ReadFile") {}
 
   ~ReadFile() { Release(); }
 
@@ -32,8 +31,7 @@ class ReadFile {
       exit(-1);
     }
     len_ = statBuf.st_size;
-    if ((byte_ = (char *)mmap(nullptr, len_, PROT_READ, MAP_SHARED, fd_, 0)) ==
-        (void *)-1) {
+    if ((byte_ = (char *)mmap(nullptr, len_, PROT_READ, MAP_SHARED, fd_, 0)) == (void *)-1) {
       fprintf(stderr, "mmap file error\n");
       exit(-1);
     }

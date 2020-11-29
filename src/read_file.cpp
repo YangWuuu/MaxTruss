@@ -24,14 +24,11 @@ uint64_t ReadFile::ConstructEdges(uint64_t *&edges) {
   log_info(readFileClock_.Count("approximateLineNum: %lu", lineNum));
 #endif
 
-  edges = (uint64_t *)myMalloc((lineNum + 1) * sizeof(uint64_t));
-  log_info(readFileClock_.Count(
-      "edges: %.2fMB", (double)lineNum * sizeof(uint64_t) / 1024 / 1024));
+  edges = (uint64_t *)MyMalloc((lineNum + 1) * sizeof(uint64_t));
+  log_info(readFileClock_.Count("edges: %.2fMB", (double)lineNum * sizeof(uint64_t) / 1024 / 1024));
 
   uint64_t edgesNum = GetEdges(edges);
-  log_info(
-      readFileClock_.Count("edgesNum: %lu %.2fMB", edgesNum,
-                           (double)edgesNum * sizeof(uint64_t) / 1024 / 1024));
+  log_info(readFileClock_.Count("edgesNum: %lu %.2fMB", edgesNum, (double)edgesNum * sizeof(uint64_t) / 1024 / 1024));
 
   return edgesNum;
 }
@@ -75,10 +72,10 @@ uint64_t ReadFile::GetEdges(uint64_t *edges) {
       }
       ++end;
     }
-    threads[i] = std::thread(
-        [=]() { ::GetEdges(edges + edgesNum, byte_ + start, end - start); });
+    threads[i] = std::thread([=]() { ::GetEdges(edges + edgesNum, byte_ + start, end - start); });
     edgesNum += ::GetLineNum(byte_ + start, end - start);
   }
+  log_info(readFileClock_.Count("before join fileSplitNum: %u", fileSplitNum));
   for (auto &thread : threads) {
     thread.join();
   }

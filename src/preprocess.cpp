@@ -5,55 +5,61 @@
 
 #pragma ide diagnostic ignored "openmp-use-default-none"
 
-// 计算节点的度
-void CalDeg(const uint64_t *edges, EdgeT edgesNum, NodeT nodesNum,
-            NodeT *&deg) {
-  deg = (NodeT *)calloc(nodesNum, sizeof(NodeT));
-#ifdef SERIAL
-  for (EdgeT i = 0; i < edgesNum; i++) {
-    ++deg[FIRST(edges[i])];
-  }
-#else
-#pragma omp parallel for
-  for (EdgeT i = 0; i < edgesNum; i++) {
-    __sync_fetch_and_add(&deg[FIRST(edges[i])], 1);
-  }
-#endif
+// 图的裁剪
+EdgeT ConstructNewGraph(const uint64_t *rawEdges, uint64_t *&edges, const NodeT *rawCore, EdgeT rawEdgesNum,
+                        NodeT startK) {
+  edges = (uint64_t *)MyMalloc(rawEdgesNum * sizeof(uint64_t));
+  // TODO parallel
+  return std::copy_if(rawEdges, rawEdges + rawEdgesNum, edges,
+                      [&](const uint64_t edge) {
+                        return rawCore[FIRST(edge)] >= (startK - 2) && rawCore[SECOND(edge)] >= (startK - 2);
+                      }) -
+         edges;
 }
 
-// 边的解压缩
-void Unzip(const uint64_t *edges, EdgeT edgesNum, NodeT *&edgesFirst,
-           NodeT *&edgesSecond) {
-  edgesFirst = (NodeT *)myMalloc(edgesNum * sizeof(NodeT));
-  edgesSecond = (NodeT *)myMalloc(edgesNum * sizeof(NodeT));
+// 构造有向图
+void ConstructHalfEdges(const uint64_t *edges, uint64_t *&halfEdges, EdgeT halfEdgesNum) {
+  halfEdges = (uint64_t *)MyMalloc(halfEdgesNum * sizeof(uint64_t));
+  // TODO parallel
+  std::copy_if(edges, edges + halfEdgesNum * 2, halfEdges,
+               [](const uint64_t &edge) { return FIRST(edge) < SECOND(edge); });
+}
+
+// 构建CSR
+void ConstructCSRGraph(const uint64_t *edges, EdgeT edgesNum, EdgeT *&nodeIndex, NodeT *&adj) {
+  auto *edgesFirst = (NodeT *)MyMalloc(edgesNum * sizeof(NodeT));
+  adj = (NodeT *)MyMalloc(edgesNum * sizeof(NodeT));
+
+  NodeT nodesNum = FIRST(edges[edgesNum - 1]) + 1;
+  nodeIndex = (EdgeT *)MyMalloc((nodesNum + 1) * sizeof(EdgeT));
 
 #pragma omp parallel for
   for (EdgeT i = 0; i < edgesNum; i++) {
     edgesFirst[i] = FIRST(edges[i]);
-    edgesSecond[i] = SECOND(edges[i]);
+    adj[i] = SECOND(edges[i]);
   }
-}
 
-// 转换CSR格式
-void NodeIndex(const NodeT *deg, NodeT nodesNum, EdgeT *&nodeIndex) {
-  nodeIndex = (EdgeT *)calloc((nodesNum + 1), sizeof(EdgeT));
-  // 这里并行不一定比串行快，涉及到伪共享问题
-  for (NodeT i = 0; i < nodesNum; i++) {
-    nodeIndex[i + 1] = nodeIndex[i] + deg[i];
+#pragma omp parallel for
+  for (EdgeT i = 0; i <= edgesNum; i++) {
+    int64_t prev = i > 0 ? (int64_t)edgesFirst[i - 1] : -1;
+    int64_t next = i < edgesNum ? (int64_t)edgesFirst[i] : nodesNum;
+    for (int64_t j = prev + 1; j <= next; ++j) {
+      nodeIndex[j] = i;
+    }
   }
+
+  MyFree((void *&)edgesFirst, edgesNum * sizeof(NodeT));
 }
 
 // 边编号
-void GetEdgesId(const uint64_t *edges, EdgeT edgesNum, EdgeT *&edgesId,
-                const EdgeT *halfNodeIndex, const NodeT *halfEdgesSecond) {
-  edgesId = (EdgeT *)myMalloc(edgesNum * sizeof(EdgeT));
+void GetEdgesId(const uint64_t *edges, EdgeT edgesNum, const EdgeT *halfNodeIndex, const NodeT *halfAdj,
+                EdgeT *&edgesId) {
+  edgesId = (EdgeT *)MyMalloc(edgesNum * sizeof(EdgeT));
 
 #pragma omp parallel for schedule(dynamic, 1024)
   for (EdgeT i = 0u; i < edgesNum; i++) {
     NodeT u = std::min(FIRST(edges[i]), SECOND(edges[i]));
     NodeT v = std::max(FIRST(edges[i]), SECOND(edges[i]));
-    edgesId[i] = std::lower_bound(halfEdgesSecond + halfNodeIndex[u],
-                                  halfEdgesSecond + halfNodeIndex[u + 1], v) -
-                 halfEdgesSecond;
+    edgesId[i] = std::lower_bound(halfAdj + halfNodeIndex[u], halfAdj + halfNodeIndex[u + 1], v) - halfAdj;
   }
 }

@@ -11,8 +11,7 @@ static struct {
 
 static std::mutex global_log_mutex;
 
-static const char *level_names[] = {"TRACE", "DEBUG", "INFO",
-                                    "WARN",  "ERROR", "FATAL"};
+static const char *level_names[] = {"TRACE", "DEBUG", "INFO", "WARN", "ERROR", "FATAL"};
 
 static void lock() {
   if (L.lock) {
@@ -57,16 +56,11 @@ void log_log(int level, const char *file, int line, const char *fmt, ...) {
       char buf[16];
       buf[strftime(buf, sizeof(buf), "%H:%M:%S", lt)] = '\0';
 #ifdef LOG_USE_COLOR
-      fprintf(stderr, "%s %s%-5s\x1b[0m \x1b[90m(ts: %.6lf) %s:%d:\x1b[0m ",
-              buf, level_colors[level], level_names[level],
-              duration_cast<nanoseconds>(clock_now.time_since_epoch()).count() /
-                  1e9,
-              file, line);
+      fprintf(stderr, "%s %s%-5s\x1b[0m \x1b[90m(ts: %.6lf) %s:%d:\x1b[0m ", buf, level_colors[level],
+              level_names[level], duration_cast<nanoseconds>(clock_now.time_since_epoch()).count() / 1e9, file, line);
 #else
       fprintf(stderr, "%s %-5s (ts: %.6lf) %s:%d: ", buf, level_names[level],
-              duration_cast<nanoseconds>(clock_now.time_since_epoch()).count() /
-                  1e9,
-              file, line);
+              duration_cast<nanoseconds>(clock_now.time_since_epoch()).count() / 1e9, file, line);
 #endif
       va_start(args, fmt);
       vfprintf(stderr, fmt, args);
@@ -80,9 +74,7 @@ void log_log(int level, const char *file, int line, const char *fmt, ...) {
       char buf[32];
       buf[strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", lt)] = '\0';
       fprintf(L.fp, "%s %-5s (ts: %.6lf) %s:%d: ", buf, level_names[level],
-              duration_cast<nanoseconds>(clock_now.time_since_epoch()).count() /
-                  1000000000.0,
-              file, line);
+              duration_cast<nanoseconds>(clock_now.time_since_epoch()).count() / 1000000000.0, file, line);
       va_start(args, fmt);
       vfprintf(L.fp, fmt, args);
       va_end(args);

@@ -1,19 +1,17 @@
 #include <algorithm>
-#include <cstdlib>
 
 #include "util.h"
 
 #pragma ide diagnostic ignored "openmp-use-default-none"
 
 // 并行扫描度取值
-void Scan(NodeT n, const NodeT *deg, NodeT level, NodeT *curr,
-          NodeT &currTail) {
+void Scan(NodeT nodesNum, const NodeT *core, NodeT level, NodeT *curr, NodeT &currTail) {
   NodeT buff[BUFFER_SIZE];
   NodeT index = 0;
 
 #pragma omp for
-  for (NodeT i = 0; i < n; i++) {
-    if (deg[i] == level) {
+  for (NodeT i = 0; i < nodesNum; i++) {
+    if (core[i] == level) {
       buff[index] = i;
       index++;
 
@@ -35,8 +33,7 @@ void Scan(NodeT n, const NodeT *deg, NodeT level, NodeT *curr,
 }
 
 // 子任务循环迭代分解
-void SubLevel(const EdgeT *nodeIndex, const NodeT *edgesSecond,
-              const NodeT *curr, NodeT currTail, NodeT *deg, NodeT level,
+void SubLevel(const EdgeT *nodeIndex, const NodeT *adj, const NodeT *curr, NodeT currTail, NodeT *core, NodeT level,
               NodeT *next, NodeT &nextTail) {
   NodeT buff[BUFFER_SIZE];
   NodeT index = 0;
@@ -45,11 +42,11 @@ void SubLevel(const EdgeT *nodeIndex, const NodeT *edgesSecond,
   for (NodeT i = 0; i < currTail; i++) {
     NodeT v = curr[i];
     for (EdgeT j = nodeIndex[v]; j < nodeIndex[v + 1]; j++) {
-      NodeT u = edgesSecond[j];
-      NodeT degU = deg[u];
+      NodeT u = adj[j];
+      NodeT degU = core[u];
 
       if (degU > level) {
-        NodeT du = __sync_fetch_and_sub(&deg[u], 1);
+        NodeT du = __sync_fetch_and_sub(&core[u], 1);
         if (du == (level + 1)) {
           buff[index] = u;
           index++;
@@ -77,18 +74,24 @@ void SubLevel(const EdgeT *nodeIndex, const NodeT *edgesSecond,
 #pragma omp for
   for (NodeT i = 0; i < nextTail; i++) {
     NodeT u = next[i];
-    if (deg[u] != level) {
-      deg[u] = level;
+    if (core[u] != level) {
+      core[u] = level;
     }
   }
 #pragma omp barrier
 }
 
 // 求解k-core的主流程
-void KCore(const EdgeT *nodeIndex, const NodeT *edgesSecond, NodeT nodesNum,
-           NodeT *deg) {
-  auto *curr = (NodeT *)myMalloc(nodesNum * sizeof(NodeT));
-  auto *next = (NodeT *)myMalloc(nodesNum * sizeof(NodeT));
+void KCore(const EdgeT *nodeIndex, const NodeT *adj, NodeT nodesNum, NodeT *&core) {
+  core = (NodeT *)MyMalloc(nodesNum * sizeof(NodeT));
+
+#pragma omp parallel for
+  for (NodeT i = 0; i < nodesNum; i++) {
+    core[i] = nodeIndex[i + 1] - nodeIndex[i];
+  }
+
+  auto *curr = (NodeT *)MyMalloc(nodesNum * sizeof(NodeT));
+  auto *next = (NodeT *)MyMalloc(nodesNum * sizeof(NodeT));
   NodeT currTail = 0;
   NodeT nextTail = 0;
 
@@ -98,11 +101,10 @@ void KCore(const EdgeT *nodeIndex, const NodeT *edgesSecond, NodeT nodesNum,
     NodeT level = 0;
 
     while (todo > 0) {
-      Scan(nodesNum, deg, level, curr, currTail);
+      Scan(nodesNum, core, level, curr, currTail);
       while (currTail > 0) {
         todo = todo - currTail;
-        SubLevel(nodeIndex, edgesSecond, curr, currTail, deg, level, next,
-                 nextTail);
+        SubLevel(nodeIndex, adj, curr, currTail, core, level, next, nextTail);
 #pragma omp single
         {
           std::swap(curr, next);
@@ -116,4 +118,7 @@ void KCore(const EdgeT *nodeIndex, const NodeT *edgesSecond, NodeT nodesNum,
 #pragma omp barrier
     }
   }
+
+  MyFree((void *&)curr, nodesNum * sizeof(NodeT));
+  MyFree((void *&)next, nodesNum * sizeof(NodeT));
 }

@@ -1,39 +1,18 @@
 #include <cstdlib>
 
+#include "log.h"
 #include "util.h"
 
-#pragma ide diagnostic ignored "openmp-use-default-none"
+void InitCuda() {
+  cudaSetDevice(0);
+  cudaFree(0);
+}
 
-//__global__ void GPUCalculateTrianglesSmall(uint64_t m, uint32_t *edges_first,
-//                                           uint32_t *edges_second,
-//                                           uint64_t *nodes, uint64_t *results)
-//                                           {
-//  auto from = blockDim.x * blockIdx.x + threadIdx.x;
-//  auto step = gridDim.x * blockDim.x;
-//
-//  uint64_t count = 0;
-//  for (uint64_t i = from; i < m; i += step) {
-//    uint32_t u = edges_second[i], v = edges_first[i];
-//    uint32_t u_it = nodes[u], u_end = nodes[u + 1];
-//    uint32_t v_it = nodes[v], v_end = nodes[v + 1];
-//    int64_t a = edges_first[u_it], b = edges_first[v_it];
-//    while (u_it != u_end && v_it != v_end) {
-//      int64_t d = a - b;
-//      if (d <= 0) a = edges_first[++u_it];
-//      if (d >= 0) b = edges_first[++v_it];
-//      if (d == 0) ++count;
-//    }
-//  }
-//  results[blockDim.x * blockIdx.x + threadIdx.x] = count;
-//}
-
-// 三角形计数获取支持边数量
-void GetEdgeSup(EdgeT halfEdgesNum, NodeT *&halfEdgesFirst,
-                NodeT *&halfEdgesSecond, NodeT *&halfDeg, EdgeT *&halfNodeIndex,
-                NodeT *&edgesSup) {
-  edgesSup = (NodeT *)calloc(halfEdgesNum, sizeof(NodeT));
-#pragma omp parallel for schedule(dynamic, 1024)
-  for (EdgeT i = 0; i < halfEdgesNum; i++) {
+__global__ void CUDAGetEdgeSup(EdgeT halfEdgesNum, const NodeT *halfEdgesFirst, const NodeT *halfEdgesSecond,
+                               const EdgeT *halfNodeIndex, NodeT *edgesSup) {
+  auto from = blockDim.x * blockIdx.x + threadIdx.x;
+  auto step = gridDim.x * blockDim.x;
+  for (EdgeT i = from; i < halfEdgesNum; i += step) {
     NodeT u = halfEdgesFirst[i];
     NodeT v = halfEdgesSecond[i];
     EdgeT uStart = halfNodeIndex[u];
@@ -46,12 +25,41 @@ void GetEdgeSup(EdgeT halfEdgesNum, NodeT *&halfEdgesFirst,
       } else if (halfEdgesSecond[uStart] > halfEdgesSecond[vStart]) {
         ++vStart;
       } else {
-        __sync_fetch_and_add(&edgesSup[i], 1);
-        __sync_fetch_and_add(&edgesSup[uStart], 1);
-        __sync_fetch_and_add(&edgesSup[vStart], 1);
+        atomicAdd(edgesSup + i, 1);
+        atomicAdd(edgesSup + uStart, 1);
+        atomicAdd(edgesSup + vStart, 1);
         ++uStart;
         ++vStart;
       }
     }
   }
+}
+
+// 三角形计数获取支持边数量
+void GetEdgeSup(EdgeT halfEdgesNum, const NodeT *halfEdgesFirst, const NodeT *halfEdgesSecond,
+                const EdgeT *halfNodeIndex, NodeT nodesNum, NodeT *&edgesSup) {
+  NodeT *cudaHalfEdgesFirst;
+  NodeT *cudaHalfEdgesSecond;
+  EdgeT *cudaHalfNodeIndex;
+  NodeT *cudaEdgesSup;
+  CUDA_TRY(cudaMalloc((void **)&cudaHalfEdgesFirst, halfEdgesNum * sizeof(NodeT)));
+  CUDA_TRY(cudaMemcpy(cudaHalfEdgesFirst, halfEdgesFirst, halfEdgesNum * sizeof(NodeT), cudaMemcpyHostToDevice));
+  CUDA_TRY(cudaMalloc((void **)&cudaHalfEdgesSecond, halfEdgesNum * sizeof(NodeT)));
+  CUDA_TRY(cudaMemcpy(cudaHalfEdgesSecond, halfEdgesSecond, halfEdgesNum * sizeof(NodeT), cudaMemcpyHostToDevice));
+  CUDA_TRY(cudaMalloc((void **)&cudaHalfNodeIndex, (nodesNum + 1) * sizeof(EdgeT)));
+  CUDA_TRY(cudaMemcpy(cudaHalfNodeIndex, halfNodeIndex, (nodesNum + 1) * sizeof(EdgeT), cudaMemcpyHostToDevice));
+  CUDA_TRY(cudaMalloc((void **)&cudaEdgesSup, halfEdgesNum * sizeof(NodeT)));
+  log_info("1");
+  CUDAGetEdgeSup<<<(halfEdgesNum + 127) / 128, 128>>>(halfEdgesNum, cudaHalfEdgesFirst, cudaHalfEdgesSecond,
+                                                      cudaHalfNodeIndex, cudaEdgesSup);
+  CUDA_TRY(cudaDeviceSynchronize());
+  edgesSup = (NodeT *)calloc(halfEdgesNum, sizeof(NodeT));
+  CUDA_TRY(cudaMemcpy(edgesSup, cudaEdgesSup, halfEdgesNum * sizeof(NodeT), cudaMemcpyDeviceToHost));
+  CUDA_TRY(cudaDeviceSynchronize());
+
+  CUDA_TRY(cudaFree(cudaHalfEdgesFirst));
+  CUDA_TRY(cudaFree(cudaHalfEdgesSecond));
+  CUDA_TRY(cudaFree(cudaHalfNodeIndex));
+  CUDA_TRY(cudaFree(cudaEdgesSup));
+  CUDA_TRY(cudaDeviceSynchronize());
 }

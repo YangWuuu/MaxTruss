@@ -27,8 +27,7 @@ int main(int argc, char const **argv) {
 
   const uint32_t scaleFactor = std::stoi(argv[1]);
   const uint64_t edgeFactor = std::stoi(argv[2]);
-  const std::string fileName =
-      "s" + std::string(argv[1]) + ".e" + std::string(argv[2]);
+  const std::string fileName = "s" + std::string(argv[1]) + ".e" + std::string(argv[2]);
 
   auto nodesNum = static_cast<uint32_t>(pow(2., scaleFactor));
   uint64_t edgesNum = nodesNum * edgeFactor;
@@ -114,11 +113,8 @@ int main(int argc, char const **argv) {
   edgesNum = std::unique(edges, edges + edgesNum) - edges;
   log_info("unique edgesNum: %u", edgesNum);
 
-  edgesNum = std::remove_if(edges, edges + edgesNum,
-                            [](const uint64_t edge) {
-                              return FIRST(edge) == SECOND(edge);
-                            }) -
-             edges;
+  edgesNum =
+      std::remove_if(edges, edges + edgesNum, [](const uint64_t edge) { return FIRST(edge) == SECOND(edge); }) - edges;
   log_info("remove self loop edgesNum: %u", edgesNum);
 
   std::string result;

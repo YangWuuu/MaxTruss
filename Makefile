@@ -30,4 +30,4 @@ kron_gen :
 
 .PHONY : clean
 clean :
-	rm kmax_truss_omp kmax_truss_serial kron_gen *.o
+	rm kmax_truss_omp kmax_truss_serial kron_gen

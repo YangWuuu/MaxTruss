@@ -6,18 +6,11 @@
 
 class Graph {
  public:
-  Graph(uint64_t *edges, EdgeT edgesNum)
-      : coreClock_("kCore"),
-        preprocessClock_("Preprocess"),
-        triCountClock_("TriCount"),
-        trussClock_("Truss"),
-        rawEdges_(edges),
-        rawEdgesNum_(edgesNum) {
-    rawNodesNum_ = FIRST(rawEdges_[rawEdgesNum_ - 1]) + 1;
-  }
+  Graph(uint64_t *edges, EdgeT edgesNum);
 
-  ~Graph() {}
+  ~Graph();
 
+  // 获取最大度
   NodeT GetMaxCore();
 
   // 获取max-k-truss
@@ -25,11 +18,11 @@ class Graph {
 
  private:
   // 图的预处理
-  void Preprocess();
-  // 图的裁剪
-  void RemoveEdges();
-  // 三角形计数
-  void TriCount();
+  void Preprocess(NodeT startK);
+
+  void FreeRawGraph();
+  void FreeGraph();
+  void FreeHalfGraph();
 
   // 计时
   Clock coreClock_;
@@ -37,34 +30,27 @@ class Graph {
   Clock triCountClock_;
   Clock trussClock_;
 
-  NodeT startK_{0};
-
   // 原始图信息
   uint64_t *rawEdges_{nullptr};
   EdgeT rawEdgesNum_{};
   NodeT rawNodesNum_{};
-  NodeT *rawDeg_{nullptr};
   NodeT *rawCore_{nullptr};
-  NodeT *rawEdgesFirst_{nullptr};
-  NodeT *rawEdgesSecond_{nullptr};
   EdgeT *rawNodeIndex_{nullptr};
+  NodeT *rawAdj_{nullptr};
 
   // 新图信息
   uint64_t *edges_{nullptr};
   EdgeT edgesNum_{};
   NodeT nodesNum_{};
-  NodeT *edgesFirst_{nullptr};
-  NodeT *edgesSecond_{nullptr};
-  NodeT *deg_{nullptr};
   EdgeT *nodeIndex_{nullptr};
+  NodeT *adj_{nullptr};
 
   // 有向图信息
   uint64_t *halfEdges_{nullptr};
   EdgeT halfEdgesNum_{};
-  NodeT *halfEdgesFirst_{nullptr};
-  NodeT *halfEdgesSecond_{nullptr};
-  NodeT *halfDeg_{nullptr};
+  NodeT halfNodesNum_{};
   EdgeT *halfNodeIndex_{nullptr};
+  NodeT *halfAdj_{nullptr};
 
   // 边编号
   EdgeT *edgesId_{nullptr};
@@ -72,32 +58,29 @@ class Graph {
   NodeT *edgesSup_{nullptr};
 };
 
-// 计算节点的度
-void CalDeg(const uint64_t *edges, EdgeT edgesNum, NodeT nodesNum, NodeT *&deg);
+// 计算KCore
+void KCore(const EdgeT *nodeIndex, const NodeT *adj, NodeT nodesNum, NodeT *&core);
 
-// 边的解压缩
-void Unzip(const uint64_t *edges, EdgeT edgesNum, NodeT *&edgesFirst,
-           NodeT *&edgesSecond);
+// 图的裁剪
+EdgeT ConstructNewGraph(const uint64_t *rawEdges, uint64_t *&edges, const NodeT *rawCore, EdgeT rawEdgesNum,
+                        NodeT startK);
 
-// 转换CSR格式
-void NodeIndex(const NodeT *deg, NodeT nodesNum, EdgeT *&nodeIndex);
+// 构造CSR
+void ConstructCSRGraph(const uint64_t *edges, EdgeT edgesNum, EdgeT *&nodeIndex, NodeT *&adj);
+
+// 构造有向图
+void ConstructHalfEdges(const uint64_t *edges, uint64_t *&halfEdges, EdgeT halfEdgesNum);
 
 // 获取边序号
-void GetEdgesId(const uint64_t *edges, EdgeT edgesNum, EdgeT *&edgesId,
-                const EdgeT *halfNodeIndex, const NodeT *halfEdgesSecond);
+void GetEdgesId(const uint64_t *edges, EdgeT edgesNum, const EdgeT *halfNodeIndex, const NodeT *halfAdj,
+                EdgeT *&edgesId);
 
 // 三角形计数获取支持边数量
-void GetEdgeSup(EdgeT halfEdgesNum, NodeT *&halfEdgesFirst,
-                NodeT *&halfEdgesSecond, NodeT *&halfDeg, EdgeT *&halfNodeIndex,
-                NodeT *&edgesSup);
+void GetEdgeSup(const EdgeT *halfNodeIndex, const NodeT *halfAdj, NodeT halfNodesNum, NodeT *&edgesSup);
 
 // 求解k-truss的主流程
-void KTruss(const EdgeT *nodeIndex, const NodeT *edgesSecond,
-            const EdgeT *edgesId, const uint64_t *halfEdges, EdgeT halfEdgesNum,
-            NodeT *edgesSup, NodeT startLevel);
+void KTruss(const EdgeT *nodeIndex, const NodeT *adj, const EdgeT *edgesId, const uint64_t *halfEdges,
+            EdgeT halfEdgesNum, NodeT *edgesSup, NodeT startLevel);
 
 // 获取各层次truss的边的数量
 NodeT DisplayStats(const NodeT *edgeSup, EdgeT halfEdgesNum, NodeT minK);
-
-void KCore(const EdgeT *nodeIndex, const NodeT *edgesSecond, NodeT nodesNum,
-           NodeT *deg);

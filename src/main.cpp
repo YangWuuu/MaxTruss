@@ -1,6 +1,7 @@
 #include <omp.h>
 
 #include <string>
+#include <thread>
 
 #include "clock.h"
 #include "graph.h"
@@ -22,7 +23,11 @@ void Log(int argc, char *argv[]) {
 #ifdef SERIAL
   log_info("serial run");
 #else
-  log_info("parallel run. thread num: %d", omp_get_max_threads());
+#ifdef CUDA
+  log_info("cuda run. thread num: %d", omp_get_max_threads());
+#else
+  log_info("omp run. thread num: %d", omp_get_max_threads());
+#endif
 #endif
 
   std::string arg_string;
@@ -32,7 +37,12 @@ void Log(int argc, char *argv[]) {
   log_info("argc: %d argv is %s", argc, arg_string.c_str());
 }
 
+void InitCuda();
+
 int main(int argc, char *argv[]) {
+#ifdef CUDA
+  std::thread t(InitCuda);
+#endif
   Log(argc, argv);
 
   if (argc < 3) {
@@ -54,8 +64,13 @@ int main(int argc, char *argv[]) {
   // 通过Core分解获取最大的层次信息
   NodeT maxCore = graph.GetMaxCore();
 
+#ifdef CUDA
+  t.join();
+#endif
+
   // 得到kmax上界
   NodeT kMaxUpperBound = maxCore + 2;
+  //  NodeT kMaxUpperBound = 0;
   // 得到kmax下界
   NodeT kMaxLowerBound = graph.KMaxTruss(kMaxUpperBound, 0u);
   log_info("UpperBound: %u LowerBound: %u", kMaxUpperBound, kMaxLowerBound);
