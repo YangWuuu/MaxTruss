@@ -37,13 +37,17 @@ void Log(int argc, char *argv[]) {
   log_info("argc: %d argv is %s", argc, arg_string.c_str());
 }
 
-void InitCuda();
-
 int main(int argc, char *argv[]) {
-#ifdef CUDA
-  std::thread t(InitCuda);
-#endif
   Log(argc, argv);
+
+#ifdef CUDA
+  // cuda runtime 第一次启动比较慢
+  std::thread t([]() {
+    log_info("cuda runtime init");
+    cudaSetDevice(0);
+    log_info("cuda runtime end");
+  });
+#endif
 
   if (argc < 3) {
     fprintf(stderr, "usage: %s -f graph_name\n", argv[0]);
@@ -59,18 +63,18 @@ int main(int argc, char *argv[]) {
   ReadFile readFile(filePath);
   uint64_t edgesNum = readFile.ConstructEdges(edges);
 
+#ifdef CUDA
+  t.join();
+#endif
+
   // TODO Graph中内存需要统一全局分配
   Graph graph(edges, edgesNum);
   // 通过Core分解获取最大的层次信息
   NodeT maxCore = graph.GetMaxCore();
 
-#ifdef CUDA
-  t.join();
-#endif
-
   // 得到kmax上界
-  NodeT kMaxUpperBound = maxCore + 2;
-  //  NodeT kMaxUpperBound = 0;
+  //  NodeT kMaxUpperBound = maxCore + 2;
+  NodeT kMaxUpperBound = 0;
   // 得到kmax下界
   NodeT kMaxLowerBound = graph.KMaxTruss(kMaxUpperBound, 0u);
   log_info("UpperBound: %u LowerBound: %u", kMaxUpperBound, kMaxLowerBound);

@@ -7,12 +7,12 @@
 #pragma ide diagnostic ignored "openmp-use-default-none"
 
 // 并行扫描支持边是否与truss层次相同
-void Scan(EdgeT numEdges, const NodeT *edgesSup, NodeT level, EdgeT *curr, EdgeT &currTail, bool *inCurr) {
+void Scan(EdgeT edgesNum, const NodeT *edgesSup, NodeT level, EdgeT *curr, EdgeT &currTail, bool *inCurr) {
   NodeT buff[BUFFER_SIZE];
   EdgeT index = 0;
 
 #pragma omp for
-  for (EdgeT i = 0; i < numEdges; i++) {
+  for (EdgeT i = 0; i < edgesNum; i++) {
     if (edgesSup[i] == level) {
       buff[index] = i;
       inCurr[i] = true;
@@ -38,12 +38,12 @@ void Scan(EdgeT numEdges, const NodeT *edgesSup, NodeT level, EdgeT *curr, EdgeT
 }
 
 // 并行扫描支持边层次小于指定层次
-void ScanLessThanLevel(EdgeT numEdges, const NodeT *edgesSup, NodeT level, EdgeT *curr, EdgeT &currTail, bool *inCurr) {
+void ScanLessThanLevel(EdgeT edgesNum, const NodeT *edgesSup, NodeT level, EdgeT *curr, EdgeT &currTail, bool *inCurr) {
   NodeT buff[BUFFER_SIZE];
   EdgeT index = 0;
 
 #pragma omp for
-  for (EdgeT i = 0; i < numEdges; i++) {
+  for (EdgeT i = 0; i < edgesNum; i++) {
     if (edgesSup[i] <= level) {
       buff[index] = i;
       inCurr[i] = true;
@@ -85,7 +85,9 @@ void UpdateSup(EdgeT e, NodeT *edgesSup, NodeT level, NodeT *buff, EdgeT &index,
 
   if (index >= BUFFER_SIZE) {
     EdgeT tempIdx = __sync_fetch_and_add(&nextTail, BUFFER_SIZE);
-    for (EdgeT bufIdx = 0; bufIdx < BUFFER_SIZE; bufIdx++) next[tempIdx + bufIdx] = buff[bufIdx];
+    for (EdgeT bufIdx = 0; bufIdx < BUFFER_SIZE; bufIdx++) {
+      next[tempIdx + bufIdx] = buff[bufIdx];
+    }
     index = 0;
   }
 }

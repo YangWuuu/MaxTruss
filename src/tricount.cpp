@@ -9,7 +9,7 @@ void GetEdgeSup(const EdgeT *halfNodeIndex, const NodeT *halfAdj, NodeT halfNode
 
   auto *halfEdgesFirst = (NodeT *)MyMalloc(halfEdgesNum * sizeof(NodeT));
 
-#pragma omp parallel for schedule(dynamic, 1024)
+#pragma omp parallel for
   for (EdgeT i = 0; i < halfNodesNum; i++) {
     for (EdgeT j = halfNodeIndex[i]; j < halfNodeIndex[i + 1]; ++j) {
       halfEdgesFirst[j] = i;

@@ -69,10 +69,10 @@ Graph::~Graph() {
 NodeT Graph::GetMaxCore() {
   log_info(coreClock_.Start());
 
-  ConstructCSRGraph(rawEdges_, rawEdgesNum_, rawNodeIndex_, rawAdj_);
+  ::ConstructCSRGraph(rawEdges_, rawEdgesNum_, rawNodeIndex_, rawAdj_);
   log_info(coreClock_.Count("Construct Raw CSR Graph"));
 
-  KCore(rawNodeIndex_, rawAdj_, rawNodesNum_, rawCore_);
+  ::KCore(rawNodeIndex_, rawAdj_, rawNodesNum_, rawCore_);
   log_info(coreClock_.Count("KCore"));
 
   NodeT maxCoreNum = 0;
@@ -80,6 +80,13 @@ NodeT Graph::GetMaxCore() {
   for (NodeT i = 0; i < rawNodesNum_; i++) {
     maxCoreNum = std::max(maxCoreNum, rawCore_[i]);
   }
+
+#ifdef CUDA
+  // rawCore_
+  //  CUDA_TRY(cudaMalloc((void **)&cudaRawCore_, rawNodesNum_ * sizeof(NodeT)));
+  CUDA_TRY(cudaMallocManaged((void **)&cudaRawCore_, rawNodesNum_ * sizeof(NodeT)));
+  CUDA_TRY(cudaMemcpy(cudaRawCore_, rawCore_, rawNodesNum_ * sizeof(NodeT), cudaMemcpyHostToDevice));
+#endif
 
   log_info(coreClock_.Count("maxK: %u", maxCoreNum));
   return maxCoreNum;
@@ -95,7 +102,11 @@ NodeT Graph::KMaxTruss(NodeT startK, NodeT startLevel) {
 
   // 三角形计数
   log_info(triCountClock_.Start());
+#ifdef CUDA
+  ::GetEdgeSup(halfEdgesNum_, halfEdges_, halfNodeIndex_, nodesNum_, edgesSup_);
+#else
   ::GetEdgeSup(halfNodeIndex_, halfAdj_, halfNodesNum_, edgesSup_);
+#endif
   log_info(triCountClock_.Count("Count"));
 
   // TODO can remove
@@ -107,7 +118,24 @@ NodeT Graph::KMaxTruss(NodeT startK, NodeT startLevel) {
 
   // 求解k-truss
   log_info(trussClock_.Start());
+#ifdef CUDA
+  CUDA_TRY(cudaMalloc((void **)&cudaNodeIndex_, (nodesNum_ + 1) * sizeof(EdgeT)));
+  CUDA_TRY(cudaMemcpy(cudaNodeIndex_, nodeIndex_, (nodesNum_ + 1) * sizeof(EdgeT), cudaMemcpyHostToDevice));
+  CUDA_TRY(cudaMalloc((void **)&cudaAdj_, edgesNum_ * sizeof(NodeT)));
+  CUDA_TRY(cudaMemcpy(cudaAdj_, adj_, edgesNum_ * sizeof(NodeT), cudaMemcpyHostToDevice));
+  CUDA_TRY(cudaMalloc((void **)&cudaEdgesId_, edgesNum_ * sizeof(EdgeT)));
+  CUDA_TRY(cudaMemcpy(cudaEdgesId_, edgesId_, edgesNum_ * sizeof(EdgeT), cudaMemcpyHostToDevice));
+  CUDA_TRY(cudaMalloc((void **)&cudaHalfEdges_, halfEdgesNum_ * sizeof(uint64_t)));
+  CUDA_TRY(cudaMemcpy(cudaHalfEdges_, halfEdges_, halfEdgesNum_ * sizeof(uint64_t), cudaMemcpyHostToDevice));
+  CUDA_TRY(cudaMalloc((void **)&cudaEdgesSup_, halfEdgesNum_ * sizeof(NodeT)));
+  CUDA_TRY(cudaMemcpy(cudaEdgesSup_, edgesSup_, halfEdgesNum_ * sizeof(NodeT), cudaMemcpyHostToDevice));
+  ::KTruss(cudaNodeIndex_, cudaAdj_, cudaEdgesId_, cudaHalfEdges_, halfEdgesNum_, cudaEdgesSup_, startLevel);
+  CUDA_TRY(cudaDeviceSynchronize());
+  CUDA_TRY(cudaMemcpy(edgesSup_, cudaEdgesSup_, halfEdgesNum_ * sizeof(NodeT), cudaMemcpyDeviceToHost));
+  CUDA_TRY(cudaDeviceSynchronize());
+#else
   ::KTruss(nodeIndex_, adj_, edgesId_, halfEdges_, halfEdgesNum_, edgesSup_, startLevel);
+#endif
   log_info(trussClock_.Count("KTruss"));
 
   FreeHalfGraph();
@@ -125,13 +153,22 @@ void Graph::Preprocess(NodeT startK) {
   log_info(preprocessClock_.Count("startK: %u", startK));
 
   if (startK > 2u) {
+#ifdef CUDA
+    edgesNum_ = ::ConstructNewGraph(rawEdges_, edges_, cudaRawCore_, rawEdgesNum_, startK);
+#else
     edgesNum_ = ::ConstructNewGraph(rawEdges_, edges_, rawCore_, rawEdgesNum_, startK);
-    log_info(preprocessClock_.Count("edgesNum_: %u", edgesNum_));
+#endif
+    log_info(preprocessClock_.Count("ConstructNewGraph edgesNum_: %u", edgesNum_));
     if (edgesNum_ == 0) {
       return;
     }
   } else {
+#ifdef CUDA
+    // cuda memcpy
     edges_ = rawEdges_;
+#else
+    edges_ = rawEdges_;
+#endif
     edgesNum_ = rawEdgesNum_;
     rawEdges_ = nullptr;
   }
@@ -150,4 +187,8 @@ void Graph::Preprocess(NodeT startK) {
 
   ::GetEdgesId(edges_, edgesNum_, halfNodeIndex_, halfAdj_, edgesId_);
   log_info(preprocessClock_.Count("GetEdgesId"));
+
+#ifdef CUDA
+  // edges_ nodeIndex_ adj_ halfEdges_ halfNodeIndex_ halfAdj_ edgesId_
+#endif
 }

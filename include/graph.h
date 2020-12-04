@@ -37,6 +37,7 @@ class Graph {
   NodeT *rawCore_{nullptr};
   EdgeT *rawNodeIndex_{nullptr};
   NodeT *rawAdj_{nullptr};
+  NodeT *cudaRawCore_{nullptr};
 
   // 新图信息
   uint64_t *edges_{nullptr};
@@ -44,6 +45,8 @@ class Graph {
   NodeT nodesNum_{};
   EdgeT *nodeIndex_{nullptr};
   NodeT *adj_{nullptr};
+  EdgeT *cudaNodeIndex_{nullptr};
+  NodeT *cudaAdj_{nullptr};
 
   // 有向图信息
   uint64_t *halfEdges_{nullptr};
@@ -51,11 +54,14 @@ class Graph {
   NodeT halfNodesNum_{};
   EdgeT *halfNodeIndex_{nullptr};
   NodeT *halfAdj_{nullptr};
+  uint64_t *cudaHalfEdges_{nullptr};
 
   // 边编号
   EdgeT *edgesId_{nullptr};
+  EdgeT *cudaEdgesId_{nullptr};
   // 支持边
   NodeT *edgesSup_{nullptr};
+  NodeT *cudaEdgesSup_{nullptr};
 };
 
 // 计算KCore
@@ -77,6 +83,8 @@ void GetEdgesId(const uint64_t *edges, EdgeT edgesNum, const EdgeT *halfNodeInde
 
 // 三角形计数获取支持边数量
 void GetEdgeSup(const EdgeT *halfNodeIndex, const NodeT *halfAdj, NodeT halfNodesNum, NodeT *&edgesSup);
+void GetEdgeSup(EdgeT halfEdgesNum, const uint64_t *halfEdges, const EdgeT *halfNodeIndex, NodeT nodesNum,
+                NodeT *&edgesSup);
 
 // 求解k-truss的主流程
 void KTruss(const EdgeT *nodeIndex, const NodeT *adj, const EdgeT *edgesId, const uint64_t *halfEdges,
