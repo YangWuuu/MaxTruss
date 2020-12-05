@@ -226,17 +226,15 @@ void InitCuda(EdgeT *&currTail, EdgeT *&nextTail, bool *&processed, bool *&inCur
   *currTail = 0;
   *nextTail = 0;
 
-  CUDA_TRY(cudaMalloc((void **)&processed, halfEdgesNum * sizeof(bool)));
-  CUDA_TRY(cudaMalloc((void **)&inCurr, halfEdgesNum * sizeof(bool)));
-  CUDA_TRY(cudaMalloc((void **)&inNext, halfEdgesNum * sizeof(bool)));
-  CUDA_TRY(cudaMalloc((void **)&curr, halfEdgesNum * sizeof(EdgeT)));
-  CUDA_TRY(cudaMalloc((void **)&next, halfEdgesNum * sizeof(EdgeT)));
-  CUDA_TRY(cudaDeviceSynchronize());
+  CUDA_TRY(cudaMallocManaged((void **)&processed, halfEdgesNum * sizeof(bool)));
+  CUDA_TRY(cudaMallocManaged((void **)&inCurr, halfEdgesNum * sizeof(bool)));
+  CUDA_TRY(cudaMallocManaged((void **)&inNext, halfEdgesNum * sizeof(bool)));
+  CUDA_TRY(cudaMallocManaged((void **)&curr, halfEdgesNum * sizeof(EdgeT)));
+  CUDA_TRY(cudaMallocManaged((void **)&next, halfEdgesNum * sizeof(EdgeT)));
 
   CUDA_TRY(cudaMemset(processed, 0, halfEdgesNum * sizeof(bool)));
   CUDA_TRY(cudaMemset(inCurr, 0, halfEdgesNum * sizeof(bool)));
   CUDA_TRY(cudaMemset(inNext, 0, halfEdgesNum * sizeof(bool)));
-  CUDA_TRY(cudaDeviceSynchronize());
 }
 
 // 求解k-truss的主流程
@@ -255,7 +253,6 @@ void KTruss(const EdgeT *nodeIndex, const NodeT *adj, const EdgeT *edgesId, cons
 
   NodeT level = startLevel;
   EdgeT todo = halfEdgesNum;
-  log_info("start");
   if (level > 0u) {
     --level;
     ScanLessThanLevelKernel<<<DIV_ROUND_UP(halfEdgesNum, BLOCK_SIZE), BLOCK_SIZE>>>(halfEdgesNum, edgesSup, level, curr,
@@ -283,7 +280,6 @@ void KTruss(const EdgeT *nodeIndex, const NodeT *adj, const EdgeT *edgesId, cons
   }
 
   while (todo > 0) {
-    auto t3 = steady_clock::now();
     ScanKernel<<<DIV_ROUND_UP(halfEdgesNum, BLOCK_SIZE), BLOCK_SIZE>>>(halfEdgesNum, edgesSup, level, curr, currTail,
                                                                        inCurr);
     CUDA_TRY(cudaDeviceSynchronize());

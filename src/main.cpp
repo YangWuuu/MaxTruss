@@ -73,8 +73,8 @@ int main(int argc, char *argv[]) {
   NodeT maxCore = graph.GetMaxCore();
 
   // 得到kmax上界
-  //  NodeT kMaxUpperBound = maxCore + 2;
-  NodeT kMaxUpperBound = 0;
+  NodeT kMaxUpperBound = maxCore + 2;
+  //  NodeT kMaxUpperBound = 0;
   // 得到kmax下界
   NodeT kMaxLowerBound = graph.KMaxTruss(kMaxUpperBound, 0u);
   log_info("UpperBound: %u LowerBound: %u", kMaxUpperBound, kMaxLowerBound);

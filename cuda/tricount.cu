@@ -3,13 +3,16 @@
 #include "log.h"
 #include "util.h"
 
-__global__ void CUDAGetEdgeSup(EdgeT halfEdgesNum, const NodeT *halfEdgesFirst, const NodeT *cudaAdj,
-                               const EdgeT *halfNodeIndex, NodeT *edgesSup) {
+__global__ void CUDAGetEdgeSup(EdgeT halfEdgesNum, NodeT halfNodesNum, const NodeT *halfEdgesFirst,
+                               const NodeT *cudaAdj, const EdgeT *halfNodeIndex, NodeT *edgesSup) {
   auto from = blockDim.x * blockIdx.x + threadIdx.x;
   auto step = gridDim.x * blockDim.x;
   for (EdgeT i = from; i < halfEdgesNum; i += step) {
     NodeT u = halfEdgesFirst[i];
     NodeT v = cudaAdj[i];
+    if (v >= halfNodesNum) {
+      continue;
+    }
     EdgeT uStart = halfNodeIndex[u];
     EdgeT uEnd = halfNodeIndex[u + 1];
     EdgeT vStart = halfNodeIndex[v];
@@ -30,46 +33,31 @@ __global__ void CUDAGetEdgeSup(EdgeT halfEdgesNum, const NodeT *halfEdgesFirst, 
   }
 }
 
-__global__ void UnzipEdgesKernel1(const uint64_t *edges, EdgeT edgesNum, NodeT *edgesFirst, NodeT *adj) {
+__global__ void ConstructEdgesFirstKernel(const EdgeT *nodeIndex, NodeT nodesNum, NodeT *edgesFirst) {
   auto from = blockDim.x * blockIdx.x + threadIdx.x;
   auto step = gridDim.x * blockDim.x;
-  for (EdgeT i = from; i < edgesNum; i += step) {
-    uint64_t tmp = edges[i];
-    edgesFirst[i] = FIRST(tmp);
-    adj[i] = SECOND(tmp);
+  for (NodeT i = from; i < nodesNum; i += step) {
+    for (EdgeT j = nodeIndex[i]; j < nodeIndex[i + 1]; ++j) {
+      edgesFirst[j] = i;
+    }
   }
 }
 
 // 三角形计数获取支持边数量
-void GetEdgeSup(EdgeT halfEdgesNum, const uint64_t *halfEdges, const EdgeT *halfNodeIndex, NodeT nodesNum,
-                NodeT *&edgesSup) {
-  uint64_t *cudaHalfEdges;
-  NodeT *cudaHalfEdgesFirst;
-  NodeT *cudaAdj;
-  EdgeT *cudaHalfNodeIndex;
-  NodeT *cudaEdgesSup;
-  CUDA_TRY(cudaMalloc((void **)&cudaHalfEdges, halfEdgesNum * sizeof(uint64_t)));
-  CUDA_TRY(cudaMemcpy(cudaHalfEdges, halfEdges, halfEdgesNum * sizeof(uint64_t), cudaMemcpyHostToDevice));
-  CUDA_TRY(cudaMalloc((void **)&cudaHalfEdgesFirst, halfEdgesNum * sizeof(NodeT)));
-  CUDA_TRY(cudaMalloc((void **)&cudaAdj, halfEdgesNum * sizeof(NodeT)));
+void GetEdgeSup(const EdgeT *halfNodeIndex, const NodeT *halfAdj, NodeT halfNodesNum, NodeT *&edgesSup) {
+  EdgeT halfEdgesNum = halfNodeIndex[halfNodesNum];
+  NodeT *halfEdgesFirst;
 
-  UnzipEdgesKernel1<<<(halfEdgesNum + 127) / 128, 128>>>(cudaHalfEdges, halfEdgesNum, cudaHalfEdgesFirst, cudaAdj);
+  CUDA_TRY(cudaMallocManaged((void **)&halfEdgesFirst, halfEdgesNum * sizeof(EdgeT)));
 
-  CUDA_TRY(cudaMalloc((void **)&cudaHalfNodeIndex, (nodesNum + 1) * sizeof(EdgeT)));
-  CUDA_TRY(cudaMemcpy(cudaHalfNodeIndex, halfNodeIndex, (nodesNum + 1) * sizeof(EdgeT), cudaMemcpyHostToDevice));
-  CUDA_TRY(cudaMalloc((void **)&cudaEdgesSup, halfEdgesNum * sizeof(NodeT)));
-  log_info("1");
-  CUDAGetEdgeSup<<<(halfEdgesNum + 127) / 128, 128>>>(halfEdgesNum, cudaHalfEdgesFirst, cudaAdj, cudaHalfNodeIndex,
-                                                      cudaEdgesSup);
-  CUDA_TRY(cudaDeviceSynchronize());
-  edgesSup = (NodeT *)calloc(halfEdgesNum, sizeof(NodeT));
-  CUDA_TRY(cudaMemcpy(edgesSup, cudaEdgesSup, halfEdgesNum * sizeof(NodeT), cudaMemcpyDeviceToHost));
+  ConstructEdgesFirstKernel<<<DIV_ROUND_UP(halfNodesNum, BLOCK_SIZE), BLOCK_SIZE>>>(halfNodeIndex, halfNodesNum,
+                                                                                    halfEdgesFirst);
   CUDA_TRY(cudaDeviceSynchronize());
 
-  CUDA_TRY(cudaFree(cudaHalfEdges));
-  CUDA_TRY(cudaFree(cudaHalfEdgesFirst));
-  CUDA_TRY(cudaFree(cudaAdj));
-  CUDA_TRY(cudaFree(cudaHalfNodeIndex));
-  CUDA_TRY(cudaFree(cudaEdgesSup));
+  CUDA_TRY(cudaMallocManaged((void **)&edgesSup, halfEdgesNum * sizeof(NodeT)));
+  CUDAGetEdgeSup<<<DIV_ROUND_UP(halfEdgesNum, BLOCK_SIZE), BLOCK_SIZE>>>(halfEdgesNum, halfNodesNum, halfEdgesFirst,
+                                                                         halfAdj, halfNodeIndex, edgesSup);
   CUDA_TRY(cudaDeviceSynchronize());
+
+  CUDA_TRY(cudaFree(halfEdgesFirst));
 }
