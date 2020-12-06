@@ -1,9 +1,6 @@
 #include "graph.h"
 
-#include <algorithm>
 #include <map>
-
-#pragma ide diagnostic ignored "openmp-use-default-none"
 
 Graph::Graph(uint64_t *edges, EdgeT edgesNum)
     : coreClock_("kCore"),
@@ -137,7 +134,11 @@ NodeT Graph::KMaxTruss(NodeT startK, NodeT startLevel) {
 
   // 三角形计数
   log_info(triCountClock_.Start());
+#ifdef CUDA
+  ::GetEdgeSup(nodeIndex_, adj_, edgesId_, nodesNum_, edgesSup_);
+#else
   ::GetEdgeSup(halfNodeIndex_, halfAdj_, halfNodesNum_, edgesSup_);
+#endif
   log_info(triCountClock_.Count("Count"));
 
   // TODO can remove

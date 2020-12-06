@@ -11,16 +11,25 @@ all : kmax_truss_omp kmax_truss_serial kron_gen
 kmax_truss_omp :
 	$(CXX) $(CXXFLAGS) ${SRC_FILES} -o $@
 
-kmax_truss_cuda : graph.o kcore.o log.o main.o preprocess.o read_file.o tricount.o util.o gpu.o ktruss_cu.o
+kmax_truss_cuda : graph.o log.o main.o read_file.o util.o gpu.o kcore_cu.o preprocess_cu.o tricount_cu.o ktruss_cu.o
 	$(CXX) $(CUDAFLAGS) $^ -L /usr/local/cuda/lib64 -lcudart -o $@
 
 %.o : src/%.cpp
 	$(CXX) $(CUDAFLAGS) -c $^ -o $@
 
+kcore_cu.o : cuda/kcore.cu
+	$(NVCC) $(NVCCFLAGS) -dc $^ -o $@
+
+preprocess_cu.o : cuda/preprocess.cu
+	$(NVCC) $(NVCCFLAGS) -dc $^ -o $@
+
+tricount_cu.o : cuda/tricount.cu
+	$(NVCC) $(NVCCFLAGS) -dc $^ -o $@
+
 ktruss_cu.o : cuda/ktruss.cu
 	$(NVCC) $(NVCCFLAGS) -dc $^ -o $@
 
-gpu.o : ktruss_cu.o
+gpu.o : kcore_cu.o preprocess_cu.o tricount_cu.o ktruss_cu.o
 	$(NVCC) $(NVCCFLAGS) -dlink $^ -o $@
 
 kmax_truss_serial :

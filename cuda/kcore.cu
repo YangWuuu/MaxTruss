@@ -6,8 +6,6 @@
 #include "log.h"
 #include "util.h"
 
-#pragma ide diagnostic ignored "openmp-use-default-none"
-
 __global__ void CoreKernel(const EdgeT *nodeIndex, NodeT *core, NodeT nodesNum) {
   auto from = blockDim.x * blockIdx.x + threadIdx.x;
   auto step = gridDim.x * blockDim.x;

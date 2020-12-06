@@ -1,5 +1,11 @@
 #include "log.h"
 
+#include <cstdarg>
+#include <ctime>
+#include <mutex>
+
+using namespace std::chrono;
+
 static struct {
   void *udata;
   log_LockFn lock;
@@ -10,6 +16,7 @@ static struct {
 } L;
 
 static std::mutex global_log_mutex;
+time_point<high_resolution_clock> beg = high_resolution_clock::now();
 
 static const char *level_names[] = {"TRACE", "DEBUG", "INFO", "WARN", "ERROR", "FATAL"};
 
@@ -39,8 +46,8 @@ void log_log(int level, const char *file, int line, const char *fmt, ...) {
   if (level < L.level) {
     return;
   }
-  using namespace std::chrono;
   time_point<high_resolution_clock> clock_now = high_resolution_clock::now();
+  auto elapsed_time = duration_cast<nanoseconds>(clock_now - beg).count();
   {
     std::unique_lock<std::mutex> lock_global(global_log_mutex);
     /* Acquire lock */
@@ -59,8 +66,8 @@ void log_log(int level, const char *file, int line, const char *fmt, ...) {
       fprintf(stderr, "%s %s%-5s\x1b[0m \x1b[90m(ts: %.6lf) %s:%d:\x1b[0m ", buf, level_colors[level],
               level_names[level], duration_cast<nanoseconds>(clock_now.time_since_epoch()).count() / 1e9, file, line);
 #else
-      fprintf(stderr, "%s %-5s (ts: %.6lf) %s:%d: ", buf, level_names[level],
-              duration_cast<nanoseconds>(clock_now.time_since_epoch()).count() / 1e9, file, line);
+      fprintf(stderr, "%s %-5s (%.4lf %.4lfs) %s:%d: ", buf, level_names[level],
+              duration_cast<nanoseconds>(clock_now.time_since_epoch()).count() / 1e9, elapsed_time / 1e9, file, line);
 #endif
       va_start(args, fmt);
       vfprintf(stderr, fmt, args);

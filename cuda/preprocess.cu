@@ -7,8 +7,6 @@
 
 #include "util.h"
 
-#pragma ide diagnostic ignored "openmp-use-default-none"
-
 struct MoreThanCore : public thrust::unary_function<uint64_t, bool> {
   thrust::device_ptr<NodeT> rawCorePtr_;
   NodeT startK_;

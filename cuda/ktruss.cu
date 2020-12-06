@@ -9,10 +9,6 @@
 #include "log.h"
 #include "util.h"
 
-#pragma ide diagnostic ignored "openmp-use-default-none"
-
-using namespace std::chrono;
-
 // 扫描支持边是否与truss层次相同
 __global__ void ScanKernel(EdgeT halfEdgesNum, const NodeT *edgesSup, NodeT level, EdgeT *curr, EdgeT *currTail,
                            bool *inCurr) {

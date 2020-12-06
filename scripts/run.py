@@ -96,7 +96,7 @@ def time_analysis(cmd, data_path, result, count=1, para=""):
 def main():
     cmds = [
         ["kmax_truss_omp", 5],
-        # ["kmax_truss_cuda", 5],
+        ["kmax_truss_cuda", 5],
         ["kmax_truss_serial", 3]
     ]
     print("project_folder: {}".format(project_folder))
@@ -107,10 +107,17 @@ def main():
             os.remove(cmd[0])
     if os.path.exists("kron_gen"):
         os.remove("kron_gen")
-    os.system("make")
+    os.system("make -j")
+    try:
+        os.system("make -j kmax_truss_cuda")
+    except Exception as e:
+        print(e)
     kron_gen()
     start = time.time()
     for cmd in cmds:
+        if not os.path.exists(cmd[0]):
+            print("cmd is not exist: {}".format(cmd[0]))
+            continue
         for d in data_and_results:
             data_file = os.path.join(data_folder, d[0])
             if not os.path.exists(data_file):

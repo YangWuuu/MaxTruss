@@ -78,6 +78,7 @@ void GetEdgesId(const uint64_t *edges, EdgeT edgesNum, const EdgeT *halfNodeInde
 
 // 三角形计数获取支持边数量
 void GetEdgeSup(const EdgeT *halfNodeIndex, const NodeT *halfAdj, NodeT halfNodesNum, NodeT *&edgesSup);
+void GetEdgeSup(const EdgeT *nodeIndex, const NodeT *adj, const EdgeT *edgesId, NodeT nodesNum, NodeT *&edgesSup);
 
 // 求解k-truss的主流程
 void KTruss(const EdgeT *nodeIndex, const NodeT *adj, const EdgeT *edgesId, const uint64_t *halfEdges,
