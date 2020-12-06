@@ -82,7 +82,7 @@ void SubLevel(const EdgeT *nodeIndex, const NodeT *adj, const NodeT *curr, NodeT
 }
 
 // 求解k-core的主流程
-void KCore(const EdgeT *nodeIndex, const NodeT *adj, NodeT nodesNum, NodeT *&core) {
+NodeT KCore(const EdgeT *nodeIndex, const NodeT *adj, NodeT nodesNum, NodeT *&core) {
   core = (NodeT *)MyMalloc(nodesNum * sizeof(NodeT));
 
 #pragma omp parallel for
@@ -102,6 +102,8 @@ void KCore(const EdgeT *nodeIndex, const NodeT *adj, NodeT nodesNum, NodeT *&cor
 
     while (todo > 0) {
       Scan(nodesNum, core, level, curr, currTail);
+#pragma omp single
+      { log_debug("level: %u currTail: %u restNodes: %u", level, currTail, todo); }
       while (currTail > 0) {
         todo = todo - currTail;
         SubLevel(nodeIndex, adj, curr, currTail, core, level, next, nextTail);
@@ -111,6 +113,7 @@ void KCore(const EdgeT *nodeIndex, const NodeT *adj, NodeT nodesNum, NodeT *&cor
 
           currTail = nextTail;
           nextTail = 0;
+          log_debug("level: %u currTail: %u restNodes: %u", level, currTail, todo);
         }
 #pragma omp barrier
       }
@@ -121,4 +124,11 @@ void KCore(const EdgeT *nodeIndex, const NodeT *adj, NodeT nodesNum, NodeT *&cor
 
   MyFree((void *&)curr, nodesNum * sizeof(NodeT));
   MyFree((void *&)next, nodesNum * sizeof(NodeT));
+
+  NodeT maxCoreNum = 0;
+#pragma omp parallel for reduction(max : maxCoreNum)
+  for (NodeT i = 0; i < nodesNum; i++) {
+    maxCoreNum = std::max(maxCoreNum, core[i]);
+  }
+  return maxCoreNum;
 }

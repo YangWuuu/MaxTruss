@@ -234,33 +234,24 @@ void KTruss(const EdgeT *nodeIndex, const NodeT *adj, const EdgeT *edgesId, cons
 }
 
 // 获取各层次truss的边的数量
-NodeT DisplayStats(const NodeT *edgeSup, EdgeT halfEdgesNum, NodeT minK) {
-  NodeT minSup = std::numeric_limits<NodeT>::max();
+NodeT DisplayStats(const NodeT *edgesSup, EdgeT halfEdgesNum, NodeT minK) {
   NodeT maxSup = 0;
 
-#pragma omp parallel for reduction(max : maxSup) reduction(min : minSup)
+#pragma omp parallel for reduction(max : maxSup)
   for (EdgeT i = 0; i < halfEdgesNum; i++) {
-    if (minSup > edgeSup[i]) {
-      minSup = edgeSup[i];
-    }
-    if (maxSup < edgeSup[i]) {
-      maxSup = edgeSup[i];
+    if (maxSup < edgesSup[i]) {
+      maxSup = edgesSup[i];
     }
   }
 
-  EdgeT numEdgesWithMinSup = 0;
   EdgeT numEdgesWithMaxSup = 0;
-#pragma omp parallel for reduction(+ : numEdgesWithMinSup) reduction(+ : numEdgesWithMaxSup)
+#pragma omp parallel for reduction(+ : numEdgesWithMaxSup)
   for (EdgeT i = 0; i < halfEdgesNum; i++) {
-    if (edgeSup[i] == minSup) {
-      numEdgesWithMinSup++;
-    }
-    if (edgeSup[i] == maxSup) {
+    if (edgesSup[i] == maxSup) {
       numEdgesWithMaxSup++;
     }
   }
 
-  log_info("Min-truss: %u  Edges in Min-truss: %u", minSup + 2, numEdgesWithMinSup);
   log_info("Max-truss: %u  Edges in Max-truss: %u", maxSup + 2, numEdgesWithMaxSup);
   if (maxSup + 2 >= minK) {
     printf("kmax = %u, Edges in kmax-truss = %u.\n", maxSup + 2, numEdgesWithMaxSup);

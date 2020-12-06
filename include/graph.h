@@ -60,7 +60,7 @@ class Graph {
 };
 
 // 计算KCore
-void KCore(const EdgeT *nodeIndex, const NodeT *adj, NodeT nodesNum, NodeT *&core);
+NodeT KCore(const EdgeT *nodeIndex, const NodeT *adj, NodeT nodesNum, NodeT *&core);
 
 // 图的裁剪
 EdgeT ConstructNewGraph(const uint64_t *rawEdges, uint64_t *&edges, const NodeT *rawCore, EdgeT rawEdgesNum,
@@ -84,4 +84,4 @@ void KTruss(const EdgeT *nodeIndex, const NodeT *adj, const EdgeT *edgesId, cons
             EdgeT halfEdgesNum, NodeT *edgesSup, NodeT startLevel);
 
 // 获取各层次truss的边的数量
-NodeT DisplayStats(const NodeT *edgeSup, EdgeT halfEdgesNum, NodeT minK);
+NodeT DisplayStats(const NodeT *edgesSup, EdgeT halfEdgesNum, NodeT minK);

@@ -121,16 +121,9 @@ NodeT Graph::GetMaxCore() {
   ::ConstructCSRGraph(cudaRawEdges_, rawEdgesNum_, rawNodeIndex_, rawAdj_);
   log_info(coreClock_.Count("Construct Raw CSR Graph"));
 
-  ::KCore(rawNodeIndex_, rawAdj_, rawNodesNum_, rawCore_);
-  log_info(coreClock_.Count("KCore"));
+  NodeT maxCoreNum = ::KCore(rawNodeIndex_, rawAdj_, rawNodesNum_, rawCore_);
+  log_info(coreClock_.Count("KCore maxCoreNum: %u", maxCoreNum));
 
-  NodeT maxCoreNum = 0;
-#pragma omp parallel for reduction(max : maxCoreNum)
-  for (NodeT i = 0; i < rawNodesNum_; i++) {
-    maxCoreNum = std::max(maxCoreNum, rawCore_[i]);
-  }
-
-  log_info(coreClock_.Count("maxK: %u", maxCoreNum));
   return maxCoreNum;
 }
 

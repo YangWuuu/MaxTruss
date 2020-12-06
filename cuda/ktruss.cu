@@ -1,3 +1,4 @@
+#include <thrust/count.h>
 #include <thrust/device_ptr.h>
 #include <thrust/extrema.h>
 
@@ -185,33 +186,12 @@ void SubLevel(const EdgeT *nodeIndex, const NodeT *adj, const EdgeT *curr, bool 
 }
 
 // 获取各层次truss的边的数量
-NodeT DisplayStats(const NodeT *edgeSup, EdgeT halfEdgesNum, NodeT minK) {
-  NodeT minSup = std::numeric_limits<NodeT>::max();
-  NodeT maxSup = 0;
+NodeT DisplayStats(const NodeT *edgesSup, EdgeT halfEdgesNum, NodeT minK) {
+  thrust::device_ptr<NodeT> edgesSupPtr(const_cast<NodeT *>(edgesSup));
+  NodeT maxSup = *thrust::max_element(edgesSupPtr, edgesSupPtr + halfEdgesNum);
 
-#pragma omp parallel for reduction(max : maxSup) reduction(min : minSup)
-  for (EdgeT i = 0; i < halfEdgesNum; i++) {
-    if (minSup > edgeSup[i]) {
-      minSup = edgeSup[i];
-    }
-    if (maxSup < edgeSup[i]) {
-      maxSup = edgeSup[i];
-    }
-  }
+  EdgeT numEdgesWithMaxSup = thrust::count(edgesSupPtr, edgesSupPtr + halfEdgesNum, maxSup);
 
-  EdgeT numEdgesWithMinSup = 0;
-  EdgeT numEdgesWithMaxSup = 0;
-#pragma omp parallel for reduction(+ : numEdgesWithMinSup) reduction(+ : numEdgesWithMaxSup)
-  for (EdgeT i = 0; i < halfEdgesNum; i++) {
-    if (edgeSup[i] == minSup) {
-      numEdgesWithMinSup++;
-    }
-    if (edgeSup[i] == maxSup) {
-      numEdgesWithMaxSup++;
-    }
-  }
-
-  log_info("Min-truss: %u  Edges in Min-truss: %u", minSup + 2, numEdgesWithMinSup);
   log_info("Max-truss: %u  Edges in Max-truss: %u", maxSup + 2, numEdgesWithMaxSup);
   if (maxSup + 2 >= minK) {
     printf("kmax = %u, Edges in kmax-truss = %u.\n", maxSup + 2, numEdgesWithMaxSup);
@@ -300,4 +280,12 @@ void KTruss(const EdgeT *nodeIndex, const NodeT *adj, const EdgeT *edgesId, cons
     }
     ++level;
   }
+
+  CUDA_TRY(cudaFree(currTail));
+  CUDA_TRY(cudaFree(nextTail));
+  CUDA_TRY(cudaFree(processed));
+  CUDA_TRY(cudaFree(inCurr));
+  CUDA_TRY(cudaFree(inNext));
+  CUDA_TRY(cudaFree(curr));
+  CUDA_TRY(cudaFree(next));
 }
