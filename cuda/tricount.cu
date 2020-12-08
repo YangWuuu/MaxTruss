@@ -1,8 +1,5 @@
 #include "util.h"
 
-const NodeT BITMAP_SCALE_LOG = 8u;
-const NodeT BITMAP_SCALE = 1u << BITMAP_SCALE_LOG;
-const NodeT TRI_BLOCK_SIZE = 1024u;
 const NodeT WARP_SIZE = 1u << 5u;
 const NodeT ELEMENT_BITS = sizeof(NodeT) * 8;
 
@@ -16,12 +13,11 @@ const NodeT ELEMENT_BITS = sizeof(NodeT) * 8;
   }
 
 __global__ void BmpKernel(const EdgeT *nodeIndex, const NodeT *adj, NodeT *bitmaps, NodeT *bitmapStates,
-                          NodeT *nodesCount, NodeT smBlocks, const EdgeT *edgesId, NodeT *edgesSup) {
+                          NodeT bloomFilterSize, NodeT *nodesCount, NodeT smBlocks, const EdgeT *edgesId,
+                          NodeT *edgesSup) {
   auto tid = threadIdx.x + blockDim.x * threadIdx.y;
   auto tnum = blockDim.x * blockDim.y;
-  auto num_nodes = gridDim.x;
-  const NodeT bitmapWordsNum = (num_nodes + ELEMENT_BITS - 1) / ELEMENT_BITS;
-  const NodeT bitmapWordsNumIdx = DIV_ROUND_UP(bitmapWordsNum, BITMAP_SCALE);
+  const NodeT bitmapSize = (gridDim.x + ELEMENT_BITS - 1) / ELEMENT_BITS;
 
   __shared__ NodeT u, uStart, uEnd;
   __shared__ NodeT smId, bitmapIdx, startBitmap, endBitmap;
@@ -44,18 +40,18 @@ __global__ void BmpKernel(const EdgeT *nodeIndex, const NodeT *adj, NodeT *bitma
     bitmapIdx = temp;
   }
   // initialize the 2-level bitmap
-  for (NodeT idx = tid; idx < bitmapWordsNumIdx; idx += tnum) {
+  for (NodeT idx = tid; idx < bloomFilterSize; idx += tnum) {
     bitmapIndexes[idx] = 0;
   }
   __syncthreads();
 
-  NodeT *bitmap = &bitmaps[bitmapWordsNum * (smBlocks * smId + bitmapIdx)];
+  NodeT *bitmap = &bitmaps[bitmapSize * (smBlocks * smId + bitmapIdx)];
 
   for (NodeT vIdx = uStart + tid; vIdx < uEnd; vIdx += tnum) {
     NodeT v = adj[vIdx];
     const NodeT vValue = v / ELEMENT_BITS;
     atomicOr(&bitmap[vValue], (0b1 << (v & (ELEMENT_BITS - 1))));
-    atomicOr(&bitmapIndexes[vValue >> BITMAP_SCALE_LOG], (0b1 << ((v >> BITMAP_SCALE_LOG) & (ELEMENT_BITS - 1))));
+    atomicOr(&bitmapIndexes[vValue % bloomFilterSize], (0b1 << (v & (ELEMENT_BITS - 1))));
   }
   __syncthreads();
 
@@ -76,10 +72,11 @@ __global__ void BmpKernel(const EdgeT *nodeIndex, const NodeT *adj, NodeT *bitma
     for (NodeT wIdx = vStart + threadIdx.x; wIdx < vEnd; wIdx += blockDim.x) {
       NodeT w = adj[wIdx];
       const NodeT wVal = w / ELEMENT_BITS;
-      if ((bitmapIndexes[wVal >> BITMAP_SCALE_LOG] >> ((w >> BITMAP_SCALE_LOG) & (ELEMENT_BITS - 1))) & 0b1 == 1)
+      if ((bitmapIndexes[wVal % bloomFilterSize] >> (w & (ELEMENT_BITS - 1))) & 0b1 == 1) {
         if ((bitmap[wVal] >> (w & (ELEMENT_BITS - 1))) & 0b1 == 1) {
           count++;
         }
+      }
     }
     __syncwarp();
     // warp-wise reduction
@@ -116,23 +113,29 @@ void GetEdgeSup(const EdgeT *nodeIndex, const NodeT *adj, const EdgeT *edgesId, 
   cudaDeviceProp prop;
   cudaGetDeviceProperties(&prop, 0);
   NodeT smThreads = prop.maxThreadsPerMultiProcessor;
+  NodeT blockThreads = prop.maxThreadsPerBlock;
   NodeT smNum = prop.multiProcessorCount;
-  auto smBlocks = smThreads / TRI_BLOCK_SIZE;
-  const NodeT bitmapWordsNum = (nodesNum + ELEMENT_BITS - 1) / ELEMENT_BITS;
+  NodeT sharedMem = prop.sharedMemPerMultiprocessor;
+  auto smBlocks = smThreads / blockThreads;
+  const NodeT bitmapSize = (nodesNum + ELEMENT_BITS - 1) / ELEMENT_BITS;
+  const NodeT bloomFilterSize = sharedMem / sizeof(NodeT) / smBlocks - 8;
+  log_info(
+      "smThreads: %u blockThreads: %u smNum: %u smBlocks: %u bitmapSize: %u sharedMem: %u "
+      "bloomFilterSize: %u",
+      smThreads, blockThreads, smNum, smBlocks, bitmapSize, sharedMem, bloomFilterSize);
 
   NodeT *nodesCount;
   NodeT *bitmaps;
   NodeT *bitmapStates;
-  CUDA_TRY(cudaMallocManaged((void **)&bitmaps, smBlocks * smNum * bitmapWordsNum * sizeof(NodeT)));
-  cudaMemset(bitmaps, 0, smBlocks * smNum * bitmapWordsNum * sizeof(NodeT));
+  CUDA_TRY(cudaMallocManaged((void **)&bitmaps, smBlocks * smNum * bitmapSize * sizeof(NodeT)));
+  cudaMemset(bitmaps, 0, smBlocks * smNum * bitmapSize * sizeof(NodeT));
   CUDA_TRY(cudaMallocManaged((void **)&bitmapStates, smBlocks * smNum * sizeof(NodeT)));
   cudaMemset(bitmapStates, 0, smBlocks * smNum * sizeof(NodeT));
   CUDA_TRY(cudaMallocManaged((void **)&nodesCount, sizeof(NodeT)));
   cudaMemset(nodesCount, 0, sizeof(NodeT));
 
-  const NodeT bitmapWordsNumIdx = DIV_ROUND_UP(bitmapWordsNum, BITMAP_SCALE);
-  BmpKernel<<<nodesNum, dim3(WARP_SIZE, TRI_BLOCK_SIZE / WARP_SIZE), bitmapWordsNumIdx * sizeof(NodeT)>>>(
-      nodeIndex, adj, bitmaps, bitmapStates, nodesCount, smBlocks, edgesId, edgesSup);
+  BmpKernel<<<nodesNum, dim3(WARP_SIZE, blockThreads / WARP_SIZE), bloomFilterSize * sizeof(NodeT)>>>(
+      nodeIndex, adj, bitmaps, bitmapStates, bloomFilterSize, nodesCount, smBlocks, edgesId, edgesSup);
   CUDA_TRY(cudaDeviceSynchronize());
 
   CUDA_TRY(cudaFree(bitmaps));
