@@ -67,7 +67,6 @@ int main(int argc, char *argv[]) {
   t.join();
 #endif
 
-  // TODO Graph中内存需要统一全局分配
   Graph graph(edges, edgesNum);
   // 通过Core分解获取最大的层次信息
   NodeT maxCore = graph.GetMaxCore();

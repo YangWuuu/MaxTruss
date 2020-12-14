@@ -11,8 +11,11 @@ Graph::Graph(uint64_t *edges, EdgeT edgesNum)
       rawEdgesNum_(edgesNum) {
   rawNodesNum_ = FIRST(rawEdges_[rawEdgesNum_ - 1]) + 1;
 #ifdef CUDA
+  log_info("start malloc");
   CUDA_TRY(cudaMallocManaged((void **)&cudaRawEdges_, rawEdgesNum_ * sizeof(uint64_t)));
+  log_info("end malloc");
   CUDA_TRY(cudaMemcpy(cudaRawEdges_, rawEdges_, rawEdgesNum_ * sizeof(uint64_t), cudaMemcpyHostToDevice));
+  log_info("end memcpy");
 #else
   cudaRawEdges_ = rawEdges_;
 #endif
@@ -150,7 +153,11 @@ NodeT Graph::KMaxTruss(NodeT startK, NodeT startLevel) {
 
   // 求解k-truss
   log_info(trussClock_.Start());
+#ifdef CUDA
+  ::KTruss(nodeIndex_, adj_, edgesId_, nodesNum_, halfEdges_, halfEdgesNum_, edgesSup_, startLevel);
+#else
   ::KTruss(nodeIndex_, adj_, edgesId_, halfEdges_, halfEdgesNum_, edgesSup_, startLevel);
+#endif
   log_info(trussClock_.Count("KTruss"));
 
   FreeHalfGraph();

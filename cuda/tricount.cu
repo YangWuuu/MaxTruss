@@ -1,6 +1,5 @@
 #include "util.h"
 
-const NodeT WARP_SIZE = 1u << 5u;
 const NodeT ELEMENT_BITS = sizeof(NodeT) * 8;
 
 #define WARP_REDUCE(var)                          \

@@ -1,6 +1,9 @@
 #include <thrust/count.h>
 #include <thrust/device_ptr.h>
 #include <thrust/extrema.h>
+#include <thrust/iterator/discard_iterator.h>
+#include <thrust/iterator/zip_iterator.h>
+#include <thrust/scan.h>
 
 #include <algorithm>
 #include <cstdlib>
@@ -213,9 +216,85 @@ void InitCuda(EdgeT *&currTail, EdgeT *&nextTail, bool *&processed, bool *&inCur
   CUDA_TRY(cudaMemset(inNext, 0, halfEdgesNum * sizeof(bool)));
 }
 
+__global__ void DetectDeletedEdgesKernel(EdgeT *nodeIndex, EdgeT *edgesId, bool *processed, NodeT nodesNum,
+                                         EdgeT *newOffsets, bool *edgesDeleted) {
+  __shared__ NodeT cnts[WARPS_PER_BLOCK];
+
+  auto gtid = threadIdx.x + blockIdx.x * blockDim.x;
+  auto gtnum = blockDim.x * gridDim.x;
+  auto gwid = gtid >> WARP_BITS;
+  auto gwnum = gtnum >> WARP_BITS;
+  auto lane = threadIdx.x & WARP_MASK;
+  auto lwid = threadIdx.x >> WARP_BITS;
+
+  for (auto u = gwid; u < nodesNum; u += gwnum) {
+    if (0 == lane) {
+      cnts[lwid] = 0;
+    }
+    __syncwarp();
+
+    auto start = nodeIndex[u];
+    auto end = nodeIndex[u + 1];
+    for (auto v_idx = start + lane; v_idx < end; v_idx += WARP_SIZE) {
+      auto target_edge_idx = edgesId[v_idx];
+      edgesDeleted[v_idx] = !processed[target_edge_idx];
+      if (edgesDeleted[v_idx]) {
+        atomicAdd(&cnts[lwid], 1);
+      }
+    }
+    __syncwarp();
+
+    if (0 == lane) {
+      newOffsets[u] = cnts[lwid];
+    }
+  }
+}
+
+template <typename T>
+struct IsDelete : public thrust::unary_function<T, bool> {
+  template <typename Tuple>
+  __host__ __device__ bool operator()(const Tuple &tuple) {
+    auto y = thrust::get<1>(tuple);
+    return y;
+  }
+};
+
+void ShrinkGraph(EdgeT *&nodeIndex, NodeT *&adj, EdgeT *&edgesId, bool *&processed, NodeT nodesNum,
+                 EdgeT *&newNodeIndex, NodeT *&newAdj, EdgeT *&newEdgesId, bool *&edgesDeleted, EdgeT oldEdgesNum,
+                 EdgeT newEdgesNum) {
+  DetectDeletedEdgesKernel<<<GRID_SIZE, BLOCK_SIZE>>>(nodeIndex, edgesId, processed, nodesNum, newNodeIndex,
+                                                      edgesDeleted);
+
+  thrust::device_ptr<EdgeT> newNodeIndexPtr(newNodeIndex);
+  thrust::exclusive_scan(newNodeIndexPtr, newNodeIndexPtr + nodesNum + 1, newNodeIndexPtr);
+
+  swap(nodeIndex, newNodeIndex);
+
+  thrust::device_ptr<NodeT> adjPtr(adj);
+  thrust::device_ptr<NodeT> newAdjPtr(newAdj);
+  thrust::device_ptr<EdgeT> edgesIdPtr(edgesId);
+  thrust::device_ptr<EdgeT> newEdgesIdPtr(newEdgesId);
+  thrust::device_ptr<bool> deleteEdgesPtr(edgesDeleted);
+
+  thrust::copy_if(
+      thrust::make_zip_iterator(thrust::make_tuple(adjPtr, deleteEdgesPtr)),
+      thrust::make_zip_iterator(thrust::make_tuple(adjPtr + oldEdgesNum * 2, deleteEdgesPtr + oldEdgesNum * 2)),
+      thrust::make_zip_iterator(thrust::make_tuple(newAdjPtr, thrust::make_discard_iterator())),
+      IsDelete<decltype(thrust::make_tuple(adjPtr, deleteEdgesPtr))>());
+
+  thrust::copy_if(
+      thrust::make_zip_iterator(thrust::make_tuple(edgesIdPtr, deleteEdgesPtr)),
+      thrust::make_zip_iterator(thrust::make_tuple(edgesIdPtr + oldEdgesNum * 2, deleteEdgesPtr + oldEdgesNum * 2)),
+      thrust::make_zip_iterator(thrust::make_tuple(newEdgesIdPtr, thrust::make_discard_iterator())),
+      IsDelete<decltype(thrust::make_tuple(edgesIdPtr, deleteEdgesPtr))>());
+
+  swap(adj, newAdj);
+  swap(edgesId, newEdgesId);
+}
+
 // 求解k-truss的主流程
-void KTruss(const EdgeT *nodeIndex, const NodeT *adj, const EdgeT *edgesId, const uint64_t *halfEdges,
-            EdgeT halfEdgesNum, NodeT *edgesSup, NodeT startLevel) {
+void KTruss(EdgeT *nodeIndex, NodeT *adj, EdgeT *edgesId, NodeT nodesNum, const uint64_t *halfEdges, EdgeT halfEdgesNum,
+            NodeT *edgesSup, NodeT startLevel) {
   EdgeT *currTail;
   EdgeT *nextTail;
 
@@ -227,17 +306,39 @@ void KTruss(const EdgeT *nodeIndex, const NodeT *adj, const EdgeT *edgesId, cons
 
   InitCuda(currTail, nextTail, processed, inCurr, inNext, curr, next, halfEdgesNum);
 
+  NodeT *newAdj;
+  EdgeT *newEdgesId;
+  EdgeT *newNodeIndex;
+  bool *edgesDeleted;
+
+  CUDA_TRY(cudaMallocManaged((void **)&newAdj, halfEdgesNum * 2 * sizeof(NodeT)));
+  CUDA_TRY(cudaMallocManaged((void **)&newEdgesId, halfEdgesNum * 2 * sizeof(EdgeT)));
+  CUDA_TRY(cudaMallocManaged((void **)&newNodeIndex, (nodesNum + 1) * sizeof(EdgeT)));
+  CUDA_TRY(cudaMallocManaged((void **)&edgesDeleted, halfEdgesNum * 2 * sizeof(bool)));
+
   NodeT level = startLevel;
   EdgeT todo = halfEdgesNum;
+  EdgeT oriHalfEdgesNum = halfEdgesNum;
+  EdgeT deleteEdgesNum = 0;
   if (level > 0u) {
     --level;
-    ScanLessThanLevelKernel<<<DIV_ROUND_UP(halfEdgesNum, BLOCK_SIZE), BLOCK_SIZE>>>(halfEdgesNum, edgesSup, level, curr,
-                                                                                    currTail, inCurr);
+    ScanLessThanLevelKernel<<<DIV_ROUND_UP(oriHalfEdgesNum, BLOCK_SIZE), BLOCK_SIZE>>>(oriHalfEdgesNum, edgesSup, level,
+                                                                                       curr, currTail, inCurr);
     CUDA_TRY(cudaDeviceSynchronize());
     log_debug("level: %u currTail: %u restEdges: %u", level, *currTail, todo);
 
     while (*currTail > 0) {
+      if ((deleteEdgesNum * 1.0 / oriHalfEdgesNum) > 0.05) {
+        log_debug("ShrinkGraph: %u %u", deleteEdgesNum, todo);
+        ShrinkGraph(nodeIndex, adj, edgesId, processed, nodesNum, newNodeIndex, newAdj, newEdgesId, edgesDeleted,
+                    halfEdgesNum, todo);
+        halfEdgesNum = todo;
+        deleteEdgesNum = 0;
+      }
       todo = todo - *currTail;
+
+      deleteEdgesNum += *currTail;
+
       SubLevel(nodeIndex, adj, curr, inCurr, currTail, edgesSup, level, next, inNext, nextTail, processed, edgesId,
                halfEdges);
 
@@ -247,7 +348,7 @@ void KTruss(const EdgeT *nodeIndex, const NodeT *adj, const EdgeT *edgesId, cons
       *currTail = *nextTail;
       *nextTail = 0;
 
-      log_debug("level: %u currTail: %u restEdges: %u", level, *currTail, todo);
+      log_debug("level: %u currTail: %u restEdges: %u deleteEdgesNum: %u", level, *currTail, todo, deleteEdgesNum);
     }
     ++level;
   } else {
@@ -256,13 +357,32 @@ void KTruss(const EdgeT *nodeIndex, const NodeT *adj, const EdgeT *edgesId, cons
   }
 
   while (todo > 0) {
-    ScanKernel<<<DIV_ROUND_UP(halfEdgesNum, BLOCK_SIZE), BLOCK_SIZE>>>(halfEdgesNum, edgesSup, level, curr, currTail,
-                                                                       inCurr);
+    //    if ((deleteEdgesNum * 1.0 / oriHalfEdgesNum) > 0.05) {
+    //      log_debug("ShrinkGraph: %u %u", deleteEdgesNum, todo);
+    //      ShrinkGraph(nodeIndex, adj, edgesId, processed, nodesNum, newNodeIndex, newAdj, newEdgesId, edgesDeleted,
+    //                  halfEdgesNum, todo);
+    //      halfEdgesNum = todo;
+    //      deleteEdgesNum = 0;
+    //    }
+
+    ScanKernel<<<DIV_ROUND_UP(oriHalfEdgesNum, BLOCK_SIZE), BLOCK_SIZE>>>(oriHalfEdgesNum, edgesSup, level, curr,
+                                                                          currTail, inCurr);
     CUDA_TRY(cudaDeviceSynchronize());
     log_debug("level: %u currTail: %u restEdges: %u", level, *currTail, todo);
 
     while (*currTail > 0) {
+      if ((deleteEdgesNum * 1.0 / oriHalfEdgesNum) > 0.1) {
+        log_debug("ShrinkGraph: %u %u", deleteEdgesNum, todo);
+        ShrinkGraph(nodeIndex, adj, edgesId, processed, nodesNum, newNodeIndex, newAdj, newEdgesId, edgesDeleted,
+                    halfEdgesNum, todo);
+        halfEdgesNum = todo;
+        deleteEdgesNum = 0;
+      }
+
       todo = todo - *currTail;
+
+      deleteEdgesNum += *currTail;
+
       SubLevel(nodeIndex, adj, curr, inCurr, currTail, edgesSup, level, next, inNext, nextTail, processed, edgesId,
                halfEdges);
 
@@ -272,7 +392,7 @@ void KTruss(const EdgeT *nodeIndex, const NodeT *adj, const EdgeT *edgesId, cons
       *currTail = *nextTail;
       *nextTail = 0;
 
-      log_debug("level: %u currTail: %u restEdges: %u", level, *currTail, todo);
+      log_debug("level: %u currTail: %u restEdges: %u deleteEdgesNum: %u", level, *currTail, todo, deleteEdgesNum);
     }
     ++level;
   }

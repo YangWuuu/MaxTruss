@@ -24,7 +24,12 @@ const NodeT BUFFER_SIZE = BUFFER_SIZE_BYTES / sizeof(NodeT);
 
 const uint64_t SEARCH_LINE_NUM = 1000u;
 
+const uint32_t WARP_BITS = 5u;
+const uint32_t WARP_SIZE = 1u << WARP_BITS;
+const uint32_t WARP_MASK = WARP_SIZE - 1u;
 const uint32_t BLOCK_SIZE = 128u;
+const uint32_t WARPS_PER_BLOCK = (BLOCK_SIZE / WARP_SIZE);
+const uint32_t GRID_SIZE = 1024u;
 const EdgeT INVALID_NUM = std::numeric_limits<EdgeT>::max();
 
 #define CUDA_TRY(call)                                                         \

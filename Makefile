@@ -1,9 +1,9 @@
 CXX=g++
-CXXFLAGS_SERIAL=-O3 -std=c++11 -Iinclude
-CXXFLAGS=-O3 -std=c++11 -fopenmp -Iinclude
-CUDAFLAGS=-O3 -std=c++11 -fopenmp -Iinclude -I/usr/local/cuda/include -DCUDA
+CXXFLAGS_SERIAL=-O3 -std=c++14 -Iinclude
+CXXFLAGS=-O3 -std=c++14 -fopenmp -Iinclude
+CUDAFLAGS=-O3 -std=c++14 -fopenmp -Iinclude -I/usr/local/cuda/include -DCUDA
 NVCC=nvcc
-NVCCFLAGS=-gencode=arch=compute_70,code=sm_70 -gencode=arch=compute_60,code=sm_60 -O3 -std=c++11 -Iinclude -Xcompiler -fopenmp
+NVCCFLAGS=-gencode=arch=compute_70,code=sm_70 -gencode=arch=compute_60,code=sm_60 -O3 -std=c++14 -Iinclude -Xcompiler -fopenmp
 SRC_FILES=src/main.cpp src/log.cpp src/read_file.cpp src/graph.cpp src/ktruss.cpp src/kcore.cpp src/preprocess.cpp src/tricount.cpp src/util.cpp
 
 all : kmax_truss_omp kmax_truss_serial kron_gen

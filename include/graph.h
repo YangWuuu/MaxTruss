@@ -83,6 +83,8 @@ void GetEdgeSup(const EdgeT *nodeIndex, const NodeT *adj, const EdgeT *edgesId, 
 // 求解k-truss的主流程
 void KTruss(const EdgeT *nodeIndex, const NodeT *adj, const EdgeT *edgesId, const uint64_t *halfEdges,
             EdgeT halfEdgesNum, NodeT *edgesSup, NodeT startLevel);
+void KTruss(EdgeT *nodeIndex, NodeT *adj, EdgeT *edgesId, NodeT nodesNum, const uint64_t *halfEdges, EdgeT halfEdgesNum,
+            NodeT *edgesSup, NodeT startLevel);
 
 // 获取各层次truss的边的数量
 NodeT DisplayStats(const NodeT *edgesSup, EdgeT halfEdgesNum, NodeT minK);

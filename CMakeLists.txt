@@ -60,12 +60,6 @@ if (CUDA_FOUND)
     target_link_libraries(kmax_truss_cuda ${OpenMP_CXX_FLAGS})
     target_include_directories(kmax_truss_cuda PUBLIC include)
 
-    #    cuda_add_library(kmax_truss_cuda_lib ${GPU_SRC_FILES})
-    #    target_include_directories(kmax_truss_cuda_lib PUBLIC include)
-    #    add_executable(kmax_truss_cuda ${CPU_SRC_FILES})
-    #    target_link_libraries(kmax_truss_cuda kmax_truss_cuda_lib ${OpenMP_CXX_FLAGS})
-    #    target_compile_options(kmax_truss_cuda PRIVATE ${OpenMP_CXX_FLAGS} -DCUDA)
-
 else ()
     message("CUDA NOT FOUND")
 endif ()
