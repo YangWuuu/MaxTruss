@@ -4,7 +4,7 @@
 
 ## 代码编译说明
 
-* 方法一：在代码目录下运行`make`命令，当前目录得到`kmax_truss_omp`可执行程序。
+* 方法一：在代码目录下运行`make`命令，当前目录得到`kmax_truss_serial`,`kmax_truss_omp`可执行程序，运行`make kmax_truss_cuda`命令，当前目录得到`kmax_truss_cuda`可执行程序。
 
 * 方法二：
 
@@ -15,14 +15,22 @@ cmake -DCMAKE_BUILD_TYPE=Release ..
 make
 ```
 
-在项目根目录下的bin目录内得到`kmax_truss_omp`可执行程序
+在项目根目录下的bin目录内得到`kmax_truss_serial`,`kmax_truss_omp`和`kmax_truss_cuda`(有cuda环境时)可执行程序。
 
 ## 运行使用说明
+
+代码编译会生成以下三种可执行程序：
+
+* `kmax_truss_serial`:cpu串行程序
+
+* `kmax_truss_omp`:openmp并行程序
+
+* `kmax_truss_cuda`:cuda程序
 
 运行命令：
 
 ```shell script
-./kmax_truss_omp -f ***.tsv(图数据文件路径)
+./可执行程序 -f ***.tsv(图数据文件路径)
 ```
 
 标准输出为：
@@ -73,6 +81,8 @@ Core分解也采用并行计算。
 所有部分都是并行计算的。
 
 ## 详细算法设计与实现
+
+详细算法见论文文档。
 
 ### 读取文件
 
@@ -314,3 +324,7 @@ cpu cores       : 4
 | [src/preprocess.cpp](src/preprocess.cpp)| 图的预处理            |
 | [src/read_file.cpp](src/read_file.cpp) | 文件读取               |
 | [src/tricount.cpp](src/tricount.cpp)   | 三角形计算支持边        |
+| [cuda/kcore.cu](cuda/kcore.cu)         | CUDA 图的Core分解      |
+| [cuda/ktruss.cu](cuda/ktruss.cu)       | CUDA 图的Truss分解     |
+| [cuda/preprocess.cu](cuda/preprocess.cu)| CUDA 图的预处理       |
+| [cuda/tricount.cu](cuda/tricount.cu)   | CUDA 三角形计算支持边   |
